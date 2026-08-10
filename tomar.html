@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ku" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پەنێڵی بەڕێوەبەر - تۆمارکردنی دەموچاوی قوتابی</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #1e293b; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .form-container { background: #334155; padding: 25px; border-radius: 12px; width: 450px; max-width: 90vw; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #64748b; background: #0f172a; color: white; font-size: 15px; }
+        
+        .camera-box { position: relative; width: 100%; height: 260px; background: #0f172a; border-radius: 8px; overflow: hidden; border: 2px dashed #38bdf8; margin: 15px 0; display: flex; justify-content: center; align-items: center; }
+        video, canvas { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+        canvas { display: none; } /* شاراوەیە تا وێنەکە دەگیرێت */
+
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s; margin-top: 8px; }
+        .btn-capture { background-color: #0284c7; color: white; }
+        .btn-save { background-color: #16a34a; color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .status-msg { font-size: 14px; text-align: center; margin-top: 10px; min-height: 20px; }
+        .status-success { color: #4ade80; }
+        .status-error { color: #f87171; }
+    </style>
+</head>
+<body>
+
+    <div class="form-container">
+        <h2>تۆمارکردنی قوتابیی نوێ</h2>
+
+        <div class="form-group">
+            <label>ناوی سیانی قوتابی:</label>
+            <input type="text" id="st-name" placeholder="نموونە: ئاراس ڕەئوف سەعید">
+        </div>
+
+        <div class="form-group">
+            <label>پۆل / گوورپ:</label>
+            <input type="text" id="st-class" placeholder="نموونە: پۆلی ۱۰ - زانستی">
+        </div>
+
+        <!-- بەشی کامێرا و گرتنی وێنە -->
+        <div class="camera-box">
+            <video id="webcam" autoplay muted playsinline></video>
+            <canvas id="captured-canvas"></canvas>
+        </div>
+
+        <button id="btn-capture" class="btn btn-capture">گرتنی وێنە و دروستکردنی Descriptor</button>
+        <button id="btn-save" class="btn btn-save" disabled>پاشەکەوتکردن لە داتابێس</button>
+
+        <div id="status" class="status-msg">چاوەڕوانبە.. مۆدێلەکان باردەکرێن...</div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import * as faceapi from 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.esm.js';
+
+        // ڕێکخستنی Firebase
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.firebasestorage.app",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('captured-canvas');
+        const btnCapture = document.getElementById('btn-capture');
+        const btnSave = document.getElementById('btn-save');
+        const statusMsg = document.getElementById('status');
+
+        let generatedDescriptor = null;
+
+        // ۱. بارکردنی مۆدێلەکان و دەستپێکردنی کامێرا
+        async function initAdminPanel() {
+            try {
+                await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+                await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+                await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+
+                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+                video.srcObject = stream;
+
+                statusMsg.innerText = "کامێرا ئامادەیە. تکایە ڕووت بەرامبەر کامێراکە ڕابگرە.";
+                statusMsg.className = "status-msg status-success";
+            } catch (err) {
+                statusMsg.innerText = "هەڵە لە بارکردنی کامێرا یان مۆدێلەکان!";
+                statusMsg.className = "status-msg status-error";
+                console.error(err);
+            }
+        }
+        initAdminPanel();
+
+        // ۲. گرتنی وێنەکە و دەرهێنانی Descriptor
+        btnCapture.addEventListener('click', async () => {
+            statusMsg.innerText = "لە پشکنینی دەموچاودایە...";
+            statusMsg.className = "status-msg";
+
+            // نەخشاندنی فریمی ڕاستەوخۆی کامێراکە لەسەر Canvas
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // پشکنینی دەموچاو لەسەر ئەو وێنەیەی کە لەسەر Canvas دروستبووە
+            const detection = await faceapi.detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions())
+                                          .withFaceLandmarks()
+                                          .withFaceDescriptor();
+
+            if (!detection) {
+                statusMsg.innerText = "هیچ دەموچاوێک ندۆزرایەوە! تکایە ڕاستتر بنیشە بگرەرەوە.";
+                statusMsg.className = "status-msg status-error";
+                btnSave.disabled = true;
+                return;
+            }
+
+            // گۆڕینی Float32Array بۆ Array ئاسایی JavaScript بۆ Firestore
+            generatedDescriptor = Array.from(detection.descriptor);
+
+            // نمایشکردنی وێنە وەستاوەکە لەجیاتی ویدیوکە
+            canvas.style.display = "block";
+            video.style.display = "none";
+
+            statusMsg.innerText = "دەموچاو بە سەرکەوتوویی ناسرایەوە (Descriptor 128-float دروستکرا)!";
+            statusMsg.className = "status-msg status-success";
+            btnSave.disabled = false;
+            btnCapture.innerText = "دوبارە گرتنەوەی وێنە";
+        });
+
+        // ئەگەر ویستی دووبارە وێنە بگرێتەوە
+        btnCapture.addEventListener('dblclick', () => {
+            canvas.style.display = "none";
+            video.style.display = "block";
+            btnSave.disabled = true;
+            generatedDescriptor = null;
+            statusMsg.innerText = "کامێرا چالاکبووەوە.";
+        });
+
+        // ۳. پاشەکەوتکردنی قوتابی لە Firestore
+        btnSave.addEventListener('click', async () => {
+            const name = document.getElementById('st-name').value.trim();
+            const stClass = document.getElementById('st-class').value.trim();
+
+            if (!name) {
+                alert("تکایە ناوی قوتابی بنووسە!");
+                return;
+            }
+
+            if (!generatedDescriptor) {
+                alert("پێویستە پێشتر وێنەی دەموچاوەکە بگریت!");
+                return;
+            }
+
+            btnSave.disabled = true;
+            statusMsg.innerText = "لە پاشەکەوتکردندایە لە داتابێس...";
+
+            try {
+                await addDoc(collection(db, "students"), {
+                    name: name,
+                    class: stClass,
+                    faceDescriptor: generatedDescriptor,
+                    createdAt: new Date().toISOString()
+                });
+
+                statusMsg.innerText = "قوتابیەکە بە سەرکەوتوویی تۆمارکرا!";
+                statusMsg.className = "status-msg status-success";
+
+                // پاكکردنەوەی فۆڕمەکە بۆ قوتابی داهاتوو
+                document.getElementById('st-name').value = "";
+                document.getElementById('st-class').value = "";
+                canvas.style.display = "none";
+                video.style.display = "block";
+                generatedDescriptor = null;
+
+            } catch (error) {
+                console.error("هەڵە لە تۆمارکردن:", error);
+                statusMsg.innerText = "کێشەیەک ڕوویدا لە پاشەکەوتکردندا.";
+                statusMsg.className = "status-msg status-error";
+                btnSave.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
