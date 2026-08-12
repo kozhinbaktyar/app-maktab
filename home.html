@@ -50,7 +50,7 @@
             📡 شاشەی سکانی کارت
             <span class="desc">تۆمارکردنی ئامادەبوون بە RFID</span>
         </a>
-        <a href="admin.html" class="nav-card admin">
+        <a href="admin.html" class="nav-card admin" id="admin-card">
             🗂️ پانێڵی بەڕێوەبردن
             <span class="desc">قوتابیان، ڕاپۆرت، دۆخی ڕۆژانە</span>
         </a>
@@ -70,7 +70,11 @@
         document.getElementById('staff-name').innerText = staff.name;
         const roleTag = document.getElementById('role-tag');
         roleTag.innerText = staff.role === 'admin' ? 'بەڕێوەبەر' : 'ستاف';
-        if (staff.role === 'admin') roleTag.classList.add('admin');
+        if (staff.role === 'admin') {
+            roleTag.classList.add('admin');
+        } else {
+            document.getElementById('admin-card').style.display = 'none';
+        }
     });
 
     document.getElementById('btn-logout').addEventListener('click', logout);
