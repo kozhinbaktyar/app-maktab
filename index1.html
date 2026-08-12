@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ku" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تۆمارکردنی هەژماری نوێ - سیستەمی ئامادەبوون</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(160deg, #16324f 0%, #2c3e50 100%);
+        color: #333;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    .signup-box {
+        background: white;
+        width: 400px;
+        max-width: 100%;
+        border-radius: 14px;
+        padding: 32px 28px;
+        box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        text-align: center;
+    }
+    .signup-box h2 { color: #16324f; margin-top: 0; margin-bottom: 4px; }
+    .signup-box .subtitle { color: #888; font-size: 13px; margin-bottom: 20px; }
+    
+    .form-group { text-align: right; margin-bottom: 12px; }
+    .form-group label { font-size: 13px; color: #555; font-weight: bold; display: block; margin-bottom: 4px; }
+    
+    input[type="text"], input[type="email"], input[type="password"], input[type="tel"], select {
+        width: 100%; padding: 11px; border: 1px solid #ccc;
+        border-radius: 8px; font-size: 15px; font-family: inherit; box-sizing: border-box;
+    }
+    
+    button {
+        width: 100%; padding: 13px; margin-top: 10px; border: none; border-radius: 8px;
+        font-size: 15px; font-weight: bold; cursor: pointer; font-family: inherit;
+        background: #27ae60; color: white; transition: background .2s;
+    }
+    button:hover { background: #219653; }
+    button:disabled { background: #a9b6c0; cursor: not-allowed; }
+    
+    .error-msg { color: #c0392b; font-size: 13px; min-height: 18px; margin: 8px 0; text-align: center; }
+    .success-msg { color: #27ae60; font-size: 13px; min-height: 18px; margin: 8px 0; text-align: center; }
+    
+    .login-link { margin-top: 18px; font-size: 13px; color: #666; }
+    .login-link a { color: #2980b9; text-decoration: none; font-weight: bold; }
+    .login-link a:hover { text-decoration: underline; }
+    
+    .badge-logo {
+        width: 60px; height: 60px; border-radius: 50%; background: #16324f;
+        color: #4fb0d9; font-size: 26px; display: flex; align-items: center;
+        justify-content: center; margin: 0 auto 14px auto; font-weight: bold;
+    }
+</style>
+</head>
+<body>
+
+<div class="signup-box">
+    <div class="badge-logo">📝</div>
+    <h2>تۆمارکردنی هەژماری نوێ</h2>
+    <div class="subtitle">دروستکردنی هەژمار بۆ ستاف و بەڕێوەبەران</div>
+
+    <form id="signup-form">
+        <div class="form-group">
+            <label>ناوی تەواو:</label>
+            <input type="text" id="name" placeholder="نموونە: کۆژین بەختیار" required>
+        </div>
+
+        <div class="form-group">
+            <label>ئیمەیڵ:</label>
+            <input type="email" id="email" placeholder="example@gmail.com" style="direction: ltr;" required>
+        </div>
+
+        <div class="form-group">
+            <label>ژمارەی مۆبایل:</label>
+            <input type="tel" id="phone" placeholder="0770XXXXXXX" style="direction: ltr;" required>
+        </div>
+
+        <div class="form-group">
+            <label>وشەی نهێنی (کەمتری نەبێت لە ٦ کاراکتەر):</label>
+            <input type="password" id="password" placeholder="******" style="direction: ltr;" required minlength="6">
+        </div>
+
+        <div class="form-group">
+            <label>ڕۆڵی بەکارهێنەر:</label>
+            <select id="role">
+                <option value="staff">ستاف (Staff)</option>
+                <option value="admin">بەڕێوەبەر (Admin)</option>
+            </select>
+        </div>
+
+        <div class="error-msg" id="error-msg"></div>
+        <div class="success-msg" id="success-msg"></div>
+
+        <button type="submit" id="btn-signup">تۆمارکردن</button>
+    </form>
+
+    <div class="login-link">
+        هەژمارت هەیە؟ <a href="index.html">چوونەژوورەوە</a>
+    </div>
+</div>
+
+<script type="module">
+    import { auth, db } from "./firebase-config.js";
+    import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const form = document.getElementById('signup-form');
+    const errorEl = document.getElementById('error-msg');
+    const successEl = document.getElementById('success-msg');
+    const btnSignup = document.getElementById('btn-signup');
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorEl.innerText = '';
+        successEl.innerText = '';
+
+        const name = document.getElementById('name').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const phone = document.getElementById('phone').value.trim();
+        const password = document.getElementById('password').value;
+        const role = document.getElementById('role').value;
+
+        btnSignup.disabled = true;
+        btnSignup.textContent = 'چاوەڕوانبە...';
+
+        try {
+            // ١. دروستکردنی هەژمار لە Firebase Authentication بە ئیمەیڵ و پاسوۆرد
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+
+            // ٢. پاشکەوتکردنی زانیارییەکان لە کۆلێکشنی staff ڕاستەوخۆ بە UID-ی بەکارهێنەرەکە
+            await setDoc(doc(db, "staff", user.uid), {
+                name: name,
+                phone: phone,
+                role: role,
+                email: email
+            });
+
+            successEl.innerText = 'تۆمارکردن سەرکەوتوو بوو! ڕەوانە دەکرێیت...';
+            setTimeout(() => {
+                window.location.href = 'home.html';
+            }, 1500);
+
+        } catch (error) {
+            console.error(error);
+            if (error.code === 'auth/email-already-in-use') {
+                errorEl.innerText = 'ئەم ئیمەیڵە پێشتر تۆمارکراوە!';
+            } else if (error.code === 'auth/weak-password') {
+                errorEl.innerText = 'وشەی نهێنی لاوازە، دەبێت ٦ کاراکتەر یان زیاتر بێت.';
+            } else {
+                errorEl.innerText = 'هەڵەیەک ڕوویدا: ' + error.message;
+            }
+        } finally {
+            btnSignup.disabled = false;
+            btnSignup.textContent = 'تۆمارکردن';
+        }
+    });
+</script>
+</body>
+</html>
