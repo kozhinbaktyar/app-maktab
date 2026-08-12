@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ku" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>چوونەژوورەوە - سیستەمی ئامادەبوون</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(160deg, #16324f 0%, #2c3e50 100%);
+        color: #333;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    .login-box {
+        background: white;
+        width: 380px;
+        max-width: 100%;
+        border-radius: 14px;
+        padding: 32px 28px;
+        box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        text-align: center;
+    }
+    .login-box h2 { color: #16324f; margin-top: 0; margin-bottom: 4px; }
+    .login-box .subtitle { color: #888; font-size: 13px; margin-bottom: 24px; }
+    input[type="text"], input[type="tel"] {
+        width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc;
+        border-radius: 8px; font-size: 16px; text-align: center; direction: ltr;
+        font-family: inherit;
+    }
+    button {
+        width: 100%; padding: 13px; margin-top: 10px; border: none; border-radius: 8px;
+        font-size: 15px; font-weight: bold; cursor: pointer; font-family: inherit;
+        background: #2980b9; color: white; transition: background .2s;
+    }
+    button:hover { background: #216a94; }
+    button:disabled { background: #a9b6c0; cursor: not-allowed; }
+    .link-btn {
+        background: none; color: #888; font-weight: normal; font-size: 13px;
+        text-decoration: underline; padding: 6px;
+    }
+    .link-btn:hover { background: none; color: #555; }
+    .error-msg { color: #c0392b; font-size: 13px; min-height: 18px; margin: 8px 0; }
+    .info-box {
+        background: #fff3cd; color: #7a5c00; border-radius: 8px; padding: 14px;
+        font-size: 13px; text-align: right; margin-top: 14px; line-height: 1.7;
+        display: none;
+    }
+    .uid-box {
+        background: #16324f; color: #fff; direction: ltr; font-family: monospace;
+        padding: 8px; border-radius: 6px; margin-top: 8px; word-break: break-all;
+        font-size: 12px; cursor: pointer; text-align: center;
+    }
+    .step { display: none; }
+    .step.active { display: block; }
+    .badge-logo {
+        width: 60px; height: 60px; border-radius: 50%; background: #16324f;
+        color: #4fb0d9; font-size: 26px; display: flex; align-items: center;
+        justify-content: center; margin: 0 auto 14px auto; font-weight: bold;
+    }
+</style>
+</head>
+<body>
+
+<div class="login-box">
+    <div class="badge-logo">🎓</div>
+    <h2>سیستەمی ئامادەبوونی قوتابخانە</h2>
+    <div class="subtitle">چوونەژوورەوە تایبەت بە ستاف و بەڕێوەبەران</div>
+
+    <!-- هەنگاوی ١: ژمارەی مۆبایل -->
+    <div class="step active" id="step-phone">
+        <input type="tel" id="phone-input" placeholder="07XX XXX XXXX" autocomplete="tel">
+        <div class="error-msg" id="phone-error"></div>
+        <button id="btn-send-code">ناردنی کۆدی پشکنین</button>
+    </div>
+
+    <!-- هەنگاوی ٢: کۆدی OTP -->
+    <div class="step" id="step-code">
+        <p style="font-size:13px; color:#666;">کۆدێک نێردرا بۆ <b id="phone-display"></b></p>
+        <input type="text" id="code-input" placeholder="کۆدی ٦ ژمارەیی" inputmode="numeric" maxlength="6">
+        <div class="error-msg" id="code-error"></div>
+        <button id="btn-verify-code">پشکنین و چوونەژوورەوە</button>
+        <button class="link-btn" id="btn-back-phone">گۆڕینی ژمارە</button>
+    </div>
+
+    <!-- پەیامی "هێشتا وەک ستاف تۆمار نەکراویت" -->
+    <div class="info-box" id="not-staff-box">
+        <b>⚠️ ژمارەکەت هێشتا وەک ستاف تۆمار نەکراوە.</b><br>
+        ئەم ID-یە بنێرە بۆ بەڕێوەبەری سیستەمەکە تاوەکو تۆمارت بکات لە کۆلێکشنی <code>staff</code>دا:
+        <div class="uid-box" id="uid-display" title="کرتە بکە بۆ کۆپیکردن"></div>
+    </div>
+
+    <div id="recaptcha-container"></div>
+</div>
+
+<script type="module">
+    import { auth, db } from "./firebase-config.js";
+    import { RecaptchaVerifier, signInWithPhoneNumber, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const el = (id) => document.getElementById(id);
+    const stepPhone = el('step-phone');
+    const stepCode = el('step-code');
+    const phoneInput = el('phone-input');
+    const phoneError = el('phone-error');
+    const codeInput = el('code-input');
+    const codeError = el('code-error');
+    const btnSend = el('btn-send-code');
+    const btnVerify = el('btn-verify-code');
+    const notStaffBox = el('not-staff-box');
+    const uidDisplay = el('uid-display');
+
+    // ===== پارامەترەکانی URL (بۆ ئاگاداری و ڕیدایرێکت) =====
+    const params = new URLSearchParams(location.search);
+    const redirectTo = params.get('redirect') || 'home.html';
+    if (params.get('reason') === 'not-staff') {
+        phoneError.innerText = "ژمارەکەت هێشتا وەک ستاف تۆمار نەکراوە.";
+    }
+
+    function normalizePhone(raw) {
+        let v = raw.replace(/[^\d+]/g, '');
+        if (v.startsWith('+964')) return v;
+        if (v.startsWith('964')) return '+' + v;
+        if (v.startsWith('0')) return '+964' + v.slice(1);
+        if (v.startsWith('7')) return '+964' + v;
+        return null;
+    }
+
+    // ===== reCAPTCHA نامرئی =====
+    const recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
+
+    let confirmationResult = null;
+
+    btnSend.addEventListener('click', async () => {
+        phoneError.innerText = '';
+        const normalized = normalizePhone(phoneInput.value.trim());
+        if (!normalized || normalized.length < 12) {
+            phoneError.innerText = 'ژمارەی مۆبایل دروست نییە (نموونە: 0770 123 4567)';
+            return;
+        }
+        btnSend.disabled = true;
+        btnSend.textContent = 'دەنێردرێت...';
+        try {
+            confirmationResult = await signInWithPhoneNumber(auth, normalized, recaptchaVerifier);
+            el('phone-display').innerText = normalized;
+            stepPhone.classList.remove('active');
+            stepCode.classList.add('active');
+        } catch (e) {
+            console.error(e);
+            phoneError.innerText = 'هەڵە لە ناردنی کۆد: ' + (e.code || e.message);
+            recaptchaVerifier.render().then((widgetId) => {
+                if (window.grecaptcha) window.grecaptcha.reset(widgetId);
+            });
+        } finally {
+            btnSend.disabled = false;
+            btnSend.textContent = 'ناردنی کۆدی پشکنین';
+        }
+    });
+
+    btnVerify.addEventListener('click', async () => {
+        codeError.innerText = '';
+        const code = codeInput.value.trim();
+        if (!code || code.length < 4) {
+            codeError.innerText = 'کۆدەکە دروست نییە';
+            return;
+        }
+        btnVerify.disabled = true;
+        btnVerify.textContent = 'چاوەڕوانبە...';
+        try {
+            const result = await confirmationResult.confirm(code);
+            const uid = result.user.uid;
+
+            // پشکنین: ئایا ئەم uid لە staff تۆمارکراوە؟
+            const staffSnap = await getDoc(doc(db, "staff", uid));
+            if (staffSnap.exists()) {
+                window.location.href = redirectTo;
+            } else {
+                await signOut(auth);
+                stepCode.classList.remove('active');
+                notStaffBox.style.display = 'block';
+                uidDisplay.innerText = uid;
+                uidDisplay.addEventListener('click', () => {
+                    navigator.clipboard.writeText(uid);
+                    uidDisplay.innerText = 'کۆپی کرا ✔';
+                    setTimeout(() => uidDisplay.innerText = uid, 1500);
+                });
+            }
+        } catch (e) {
+            console.error(e);
+            codeError.innerText = 'کۆدەکە هەڵەیە یان کاتی بەسەرچووە';
+        } finally {
+            btnVerify.disabled = false;
+            btnVerify.textContent = 'پشکنین و چوونەژوورەوە';
+        }
+    });
+
+    el('btn-back-phone').addEventListener('click', () => {
+        stepCode.classList.remove('active');
+        stepPhone.classList.add('active');
+        codeInput.value = '';
+        codeError.innerText = '';
+    });
+</script>
+</body>
+</html>
