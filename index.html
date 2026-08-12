@@ -28,10 +28,14 @@
     }
     .login-box h2 { color: #16324f; margin-top: 0; margin-bottom: 4px; }
     .login-box .subtitle { color: #888; font-size: 13px; margin-bottom: 24px; }
-    input[type="text"], input[type="tel"] {
-        width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc;
-        border-radius: 8px; font-size: 16px; text-align: center; direction: ltr;
-        font-family: inherit;
+    
+    .form-group { text-align: right; margin-bottom: 12px; }
+    .form-group label { font-size: 13px; color: #555; font-weight: bold; display: block; margin-bottom: 4px; }
+
+    input[type="email"], input[type="password"] {
+        width: 100%; padding: 12px; border: 1px solid #ccc;
+        border-radius: 8px; font-size: 15px; direction: ltr;
+        font-family: inherit; box-sizing: border-box;
     }
     button {
         width: 100%; padding: 13px; margin-top: 10px; border: none; border-radius: 8px;
@@ -40,11 +44,6 @@
     }
     button:hover { background: #216a94; }
     button:disabled { background: #a9b6c0; cursor: not-allowed; }
-    .link-btn {
-        background: none; color: #888; font-weight: normal; font-size: 13px;
-        text-decoration: underline; padding: 6px;
-    }
-    .link-btn:hover { background: none; color: #555; }
     .error-msg { color: #c0392b; font-size: 13px; min-height: 18px; margin: 8px 0; }
     .info-box {
         background: #fff3cd; color: #7a5c00; border-radius: 8px; padding: 14px;
@@ -56,8 +55,10 @@
         padding: 8px; border-radius: 6px; margin-top: 8px; word-break: break-all;
         font-size: 12px; cursor: pointer; text-align: center;
     }
-    .step { display: none; }
-    .step.active { display: block; }
+    .signup-link { margin-top: 18px; font-size: 13px; color: #666; }
+    .signup-link a { color: #2980b9; text-decoration: none; font-weight: bold; }
+    .signup-link a:hover { text-decoration: underline; }
+
     .badge-logo {
         width: 60px; height: 60px; border-radius: 50%; background: #16324f;
         color: #4fb0d9; font-size: 26px; display: flex; align-items: center;
@@ -72,108 +73,70 @@
     <h2>سیستەمی ئامادەبوونی قوتابخانە</h2>
     <div class="subtitle">چوونەژوورەوە تایبەت بە ستاف و بەڕێوەبەران</div>
 
-    <!-- هەنگاوی ١: ژمارەی مۆبایل -->
-    <div class="step active" id="step-phone">
-        <input type="tel" id="phone-input" placeholder="07XX XXX XXXX" autocomplete="tel">
-        <div class="error-msg" id="phone-error"></div>
-        <button id="btn-send-code">ناردنی کۆدی پشکنین</button>
-    </div>
+    <form id="login-form">
+        <div class="form-group">
+            <label>ئیمەیڵ:</label>
+            <input type="email" id="email-input" placeholder="example@gmail.com" required>
+        </div>
 
-    <!-- هەنگاوی ٢: کۆدی OTP -->
-    <div class="step" id="step-code">
-        <p style="font-size:13px; color:#666;">کۆدێک نێردرا بۆ <b id="phone-display"></b></p>
-        <input type="text" id="code-input" placeholder="کۆدی ٦ ژمارەیی" inputmode="numeric" maxlength="6">
-        <div class="error-msg" id="code-error"></div>
-        <button id="btn-verify-code">پشکنین و چوونەژوورەوە</button>
-        <button class="link-btn" id="btn-back-phone">گۆڕینی ژمارە</button>
-    </div>
+        <div class="form-group">
+            <label>وشەی نهێنی:</label>
+            <input type="password" id="password-input" placeholder="******" required>
+        </div>
+
+        <div class="error-msg" id="login-error"></div>
+
+        <button type="submit" id="btn-login">چوونەژوورەوە</button>
+    </form>
 
     <!-- پەیامی "هێشتا وەک ستاف تۆمار نەکراویت" -->
     <div class="info-box" id="not-staff-box">
-        <b>⚠️ ژمارەکەت هێشتا وەک ستاف تۆمار نەکراوە.</b><br>
+        <b>⚠️ هەژمارەکەت هێشتا وەک ستاف تۆمار نەکراوە.</b><br>
         ئەم ID-یە بنێرە بۆ بەڕێوەبەری سیستەمەکە تاوەکو تۆمارت بکات لە کۆلێکشنی <code>staff</code>دا:
         <div class="uid-box" id="uid-display" title="کرتە بکە بۆ کۆپیکردن"></div>
     </div>
 
-    <div id="recaptcha-container"></div>
+    <div class="signup-link">
+        هەژمارت نییە؟ <a href="signup.html">تۆمارکردنی هەژماری نوێ</a>
+    </div>
 </div>
 
 <script type="module">
     import { auth, db } from "./firebase-config.js";
-    import { RecaptchaVerifier, signInWithPhoneNumber, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
     import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const el = (id) => document.getElementById(id);
-    const stepPhone = el('step-phone');
-    const stepCode = el('step-code');
-    const phoneInput = el('phone-input');
-    const phoneError = el('phone-error');
-    const codeInput = el('code-input');
-    const codeError = el('code-error');
-    const btnSend = el('btn-send-code');
-    const btnVerify = el('btn-verify-code');
+    const loginForm = el('login-form');
+    const emailInput = el('email-input');
+    const passwordInput = el('password-input');
+    const loginError = el('login-error');
+    const btnLogin = el('btn-login');
     const notStaffBox = el('not-staff-box');
     const uidDisplay = el('uid-display');
 
-    // ===== پارامەترەکانی URL (بۆ ئاگاداری و ڕیدایرێکت) =====
+    // ===== پارامەترەکانی URL =====
     const params = new URLSearchParams(location.search);
     const redirectTo = params.get('redirect') || 'home.html';
     if (params.get('reason') === 'not-staff') {
-        phoneError.innerText = "ژمارەکەت هێشتا وەک ستاف تۆمار نەکراوە.";
+        loginError.innerText = "هەژمارەکەت هێشتا وەک ستاف تۆمار نەکراوە.";
     }
 
-    function normalizePhone(raw) {
-        let v = raw.replace(/[^\d+]/g, '');
-        if (v.startsWith('+964')) return v;
-        if (v.startsWith('964')) return '+' + v;
-        if (v.startsWith('0')) return '+964' + v.slice(1);
-        if (v.startsWith('7')) return '+964' + v;
-        return null;
-    }
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        loginError.innerText = '';
+        notStaffBox.style.display = 'none';
 
-    // ===== reCAPTCHA نامرئی =====
-    const recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
 
-    let confirmationResult = null;
+        btnLogin.disabled = true;
+        btnLogin.textContent = 'چاوەڕوانبە...';
 
-    btnSend.addEventListener('click', async () => {
-        phoneError.innerText = '';
-        const normalized = normalizePhone(phoneInput.value.trim());
-        if (!normalized || normalized.length < 12) {
-            phoneError.innerText = 'ژمارەی مۆبایل دروست نییە (نموونە: 0770 123 4567)';
-            return;
-        }
-        btnSend.disabled = true;
-        btnSend.textContent = 'دەنێردرێت...';
         try {
-            confirmationResult = await signInWithPhoneNumber(auth, normalized, recaptchaVerifier);
-            el('phone-display').innerText = normalized;
-            stepPhone.classList.remove('active');
-            stepCode.classList.add('active');
-        } catch (e) {
-            console.error(e);
-            phoneError.innerText = 'هەڵە لە ناردنی کۆد: ' + (e.code || e.message);
-            recaptchaVerifier.render().then((widgetId) => {
-                if (window.grecaptcha) window.grecaptcha.reset(widgetId);
-            });
-        } finally {
-            btnSend.disabled = false;
-            btnSend.textContent = 'ناردنی کۆدی پشکنین';
-        }
-    });
-
-    btnVerify.addEventListener('click', async () => {
-        codeError.innerText = '';
-        const code = codeInput.value.trim();
-        if (!code || code.length < 4) {
-            codeError.innerText = 'کۆدەکە دروست نییە';
-            return;
-        }
-        btnVerify.disabled = true;
-        btnVerify.textContent = 'چاوەڕوانبە...';
-        try {
-            const result = await confirmationResult.confirm(code);
-            const uid = result.user.uid;
+            // چوونەژوورەوە بە ئیمەیڵ و پاسۆرد
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const uid = userCredential.user.uid;
 
             // پشکنین: ئایا ئەم uid لە staff تۆمارکراوە؟
             const staffSnap = await getDoc(doc(db, "staff", uid));
@@ -181,29 +144,25 @@
                 window.location.href = redirectTo;
             } else {
                 await signOut(auth);
-                stepCode.classList.remove('active');
                 notStaffBox.style.display = 'block';
                 uidDisplay.innerText = uid;
-                uidDisplay.addEventListener('click', () => {
+                uidDisplay.onclick = () => {
                     navigator.clipboard.writeText(uid);
                     uidDisplay.innerText = 'کۆپی کرا ✔';
                     setTimeout(() => uidDisplay.innerText = uid, 1500);
-                });
+                };
             }
         } catch (e) {
             console.error(e);
-            codeError.innerText = 'کۆدەکە هەڵەیە یان کاتی بەسەرچووە';
+            if (e.code === 'auth/invalid-credential' || e.code === 'auth/user-not-found' || e.code === 'auth/wrong-password') {
+                loginError.innerText = 'ئیمەیڵ یان وشەی نهێنی هەڵەیە';
+            } else {
+                loginError.innerText = 'هەڵەیەک ڕوویدا: ' + (e.message || e.code);
+            }
         } finally {
-            btnVerify.disabled = false;
-            btnVerify.textContent = 'پشکنین و چوونەژوورەوە';
+            btnLogin.disabled = false;
+            btnLogin.textContent = 'چوونەژوورەوە';
         }
-    });
-
-    el('btn-back-phone').addEventListener('click', () => {
-        stepCode.classList.remove('active');
-        stepPhone.classList.add('active');
-        codeInput.value = '';
-        codeError.innerText = '';
     });
 </script>
 </body>
