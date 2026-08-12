@@ -178,16 +178,6 @@
                     <input type="text" id="student-name" placeholder="ناوی تەواو" required>
                     <input type="text" id="student-class" placeholder="پۆل" required>
 
-                    <div class="image-section">
-                        <label>وێنەی قوتابی (ئەگەر بیهێڵیتەوە بەتاڵ لە کاتی دەستکاریکردن، وێنەی پێشوو دەمێنێتەوە):</label>
-                        <input type="file" id="student-file" accept="image/*">
-                        <video id="webcam" autoplay playsinline style="width:150px; display:none;"></video>
-                        <button type="button" id="btn-capture">کردنەوەی کامێرا</button>
-                        <button type="button" id="btn-take-pic" style="display:none;">گرتنی وێنە</button>
-                        <canvas id="canvas" style="display:none;"></canvas>
-                        <br>
-                        <img id="img-preview" class="img-preview">
-                    </div>
                     <button type="submit" class="btn-save">پاشکەوتکردن / نوێکردنەوە</button>
                     <button type="button" class="btn-cancel-edit" id="btn-cancel-edit">پاشگەزبوونەوە لە دەستکاریکردن</button>
                 </form>
@@ -226,13 +216,21 @@
     </div>
 
     <script type="module">
-        import { db, storage } from "./firebase-config.js";
+        import { db } from "./firebase-config.js";
         import { requireStaffAuth, logout } from "./auth-guard.js";
         import {
             getFirestore, doc, setDoc, getDoc, getDocs, collection, collectionGroup,
             onSnapshot, deleteDoc
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        import { ref, uploadString, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
+        // ===== ئاشکراکردنی هەر هەڵەیەکی شاردراوە (بۆ دۆزینەوەی کێشە) =====
+        window.addEventListener('error', (e) => {
+            alert('هەڵەی JS ڕوویدا: ' + (e.message || e));
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+            const reason = e.reason;
+            alert('هەڵەی Promise ڕوویدا: ' + (reason && reason.message ? reason.message : String(reason)));
+        });
 
         // ===== پاسەوانی چوونەژوورەوە =====
         const staff = await requireStaffAuth({ requireAdmin: true });
@@ -252,7 +250,6 @@
         }
 
         // ===== دۆخی گشتی =====
-        let capturedImageBase64 = null; // وێنەی نوێی گیراو (ئەگەر هەبێت)
         let editingCardId = null;       // ئەگەر لە دۆخی دەستکاریکردندابین، ئەم cardId‌ە پڕە
         let studentsCache = [];         // دواین لیستی قوتابییان (لە onSnapshot)
         let attendanceCache = {};       // {cardId: {status, time}} بۆ ڕۆژی چالاک
@@ -287,83 +284,24 @@
             loadMonthlyReport();
         });
 
-        // ===== کامێرا =====
-        let webcamStream = null;
-        document.getElementById('btn-capture').addEventListener('click', startWebcam);
-        document.getElementById('btn-take-pic').addEventListener('click', takeSnapshot);
+        // ===== کامێرا: لابرا، ئەم نەخشەیە Firebase Storage بەکارناهێنێت =====
 
-        async function startWebcam() {
-            const video = document.getElementById('webcam');
-            document.getElementById('btn-take-pic').style.display = 'inline-block';
-            try {
-                webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
-                video.srcObject = webcamStream;
-                video.style.display = 'block';
-            } catch (e) {
-                alert("نەتوانرا کامێرا بکرێتەوە: " + e);
-            }
-        }
-
-        function takeSnapshot() {
-            const video = document.getElementById('webcam');
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            ctx.drawImage(video, 0, 0);
-            capturedImageBase64 = canvas.toDataURL('image/jpeg');
-            showPreview(capturedImageBase64);
-            stopWebcam();
-        }
-
-        function stopWebcam() {
-            if (webcamStream) {
-                webcamStream.getTracks().forEach(track => track.stop());
-                webcamStream = null;
-            }
-            document.getElementById('webcam').style.display = 'none';
-            document.getElementById('btn-take-pic').style.display = 'none';
-        }
-
-        function showPreview(src) {
-            const img = document.getElementById('img-preview');
-            img.src = src;
-            img.style.display = 'inline-block';
-        }
-
-        // ===== هەڵبژاردنی فایلی وێنە =====
-        document.getElementById('student-file').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-                capturedImageBase64 = reader.result;
-                showPreview(capturedImageBase64);
-            };
-            reader.readAsDataURL(file);
-        });
 
         // ===== فۆرم: نوێ یان دەستکاری =====
         function resetForm() {
             editingCardId = null;
-            capturedImageBase64 = null;
             document.getElementById('student-form').reset();
             document.getElementById('card-id').disabled = false;
-            document.getElementById('img-preview').style.display = 'none';
             document.getElementById('edit-banner').style.display = 'none';
             document.getElementById('btn-cancel-edit').style.display = 'none';
-            stopWebcam();
         }
 
         function loadStudentForEdit(student) {
             editingCardId = student.cardId;
-            capturedImageBase64 = null;
             document.getElementById('card-id').value = student.cardId;
             document.getElementById('card-id').disabled = true; // ناتوانرێت ID بگۆڕدرێت لە دەستکاریکردندا
             document.getElementById('student-name').value = student.name || '';
             document.getElementById('student-class').value = student.class || '';
-            if (student.imageUrl) { showPreview(student.imageUrl); }
-            else { document.getElementById('img-preview').style.display = 'none'; }
             document.getElementById('edit-banner').style.display = 'block';
             document.getElementById('btn-cancel-edit').style.display = 'block';
             openModal('register-modal');
@@ -387,7 +325,7 @@
             try {
                 // ئاگاداری لە دووبارەبوونی cardId تەنیا لە کاتی زیادکردنی نوێدا
                 if (!editingCardId) {
-                    const existing = await getDoc(doc(db, "students", cardId));
+                    const existing = await withTimeout(getDoc(doc(db, "students", cardId)));
                     if (existing.exists()) {
                         const ok = confirm(`ژمارەی کارت "${cardId}" پێشتر بۆ قوتابییەکی تر تۆمارکراوە (${existing.data().name}). ئایا دەتەوێت نوێی بکەیتەوە؟`);
                         if (!ok) { submitBtn.disabled = false; submitBtn.textContent = originalBtnText; return; }
@@ -402,14 +340,7 @@
                     payload.parentJoined = false;
                 }
 
-                // تەنیا ئەگەر وێنەیەکی نوێ هەبێت imageUrl دەنووسین، بۆ ئەوەی وێنەی پێشوو نەسڕدرێتەوە
-                if (capturedImageBase64) {
-                    const storageRef = ref(storage, `students/${cardId}.jpg`);
-                    await uploadString(storageRef, capturedImageBase64, 'data_url');
-                    payload.imageUrl = await getDownloadURL(storageRef);
-                }
-
-                await setDoc(doc(db, "students", cardId), payload, { merge: true });
+                await withTimeout(setDoc(doc(db, "students", cardId), payload, { merge: true }));
                 alert("قوتابی پاشکەوتکرا!" + (!editingCardId ? `\n\nکۆدی بەستنەوەی بەخێوکەر: ${payload.linkCode}\n(ئەم کۆدە لە خشتەی خوارەوەش دەتوانیت ببینیت)` : ''));
                 resetForm();
             } catch (err) {
@@ -417,6 +348,8 @@
                 let msg = err && err.message ? err.message : String(err);
                 if (err && err.code === 'permission-denied') {
                     msg = 'ڕێگەت پێنەدراوە بنووسیت (permission-denied). پێویستە Firestore Security Rules‌ت لە Firebase Console پشکنیت و دڵنیابیتەوە کە کراوەیە یان deploy کراوە.';
+                } else if (err && err.message === 'TIMEOUT') {
+                    msg = 'داواکارییەکە زۆر خایاند و وەڵامی نەدایەوە (کێشەی ئینتەرنێت یان پەیوەندی بە Firebase). تکایە ئینتەرنێت و دۆخی Firestore پشکنە و دووبارە هەوڵ بدەرەوە.';
                 }
                 alert("هەڵە لە پاشکەوتکردن: " + msg);
             } finally {
@@ -424,6 +357,14 @@
                 submitBtn.textContent = originalBtnText;
             }
         });
+
+        // ئەگەر داواکارییەک زیاتر لە ١٥ چرکە خایاند، بە هەڵە دادەنرێت (بۆ ئەوەی "چاوەڕوانبە" هەتاهەتایە نەمێنێتەوە)
+        function withTimeout(promise, ms = 15000) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), ms))
+            ]);
+        }
 
         // ===== گەڕان لە خشتەی قوتابییان =====
         document.getElementById('student-search').addEventListener('input', (e) => {
@@ -641,11 +582,6 @@
             if (!ok) return;
             try {
                 await deleteDoc(doc(db, "students", student.cardId));
-                if (student.imageUrl) {
-                    try {
-                        await deleteObject(ref(storage, `students/${student.cardId}.jpg`));
-                    } catch (e) { /* لەوانەیە وێنە نەبووبێت، گرنگ نییە */ }
-                }
                 alert("قوتابیەکە سڕایەوە.");
             } catch (err) {
                 alert("هەڵە لە سڕینەوە: " + err);
