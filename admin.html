@@ -235,8 +235,8 @@
         import { ref, uploadString, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
         // ===== پاسەوانی چوونەژوورەوە =====
-        const staff = await requireStaffAuth();
-        const isAdmin = staff.role === 'admin';
+        const staff = await requireStaffAuth({ requireAdmin: true });
+        const isAdmin = true;
         document.getElementById('staff-name-label').innerText = staff.name;
         const roleTagEl = document.getElementById('role-tag');
         roleTagEl.innerText = isAdmin ? 'بەڕێوەبەر' : 'ستاف';
