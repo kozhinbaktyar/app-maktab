@@ -1,60 +1,148 @@
-// ===== پاسەوانی چوونەژوورەوە (هەموو پەڕە پارێزراوەکان ئەمە بەکاردەهێنن) =====
 import { auth, db } from "./firebase-config.js";
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { ref, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-/**
- * پشکنینی چوونەژوورەوە + ڕۆڵی ستاف.
- * ئەگەر چوونەژوورەوەی نەبوو یان لە staff-دا تۆمار نەکرابوو، دەگەڕێتەوە بۆ login (index.html).
- * ئەگەر requireAdmin=true بێت و ڕۆڵەکە admin نەبێت، دەگەڕێتەوە بۆ home.html.
- *
- * @param {{requireAdmin?: boolean}} opts
- * @returns {Promise<{uid:string, role:string, name:string, phone:string}>}
- */
-export function requireStaffAuth(opts = {}) {
-    const { requireAdmin = false } = opts;
+import {
+    onAuthStateChanged,
+    signOut
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+import {
+    ref,
+    get
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+
+export function requireStaffAuth(options = {}) {
+
+    const { requireAdmin = false } = options;
+
     return new Promise((resolve) => {
+
         onAuthStateChanged(auth, async (user) => {
+
+            // ئەگەر Login نەکراوە
             if (!user) {
                 goToLogin();
                 return;
             }
+
             try {
-                const staffSnap = await get(ref(db, "staff/" + user.uid));
-                if (!staffSnap.exists()) {
-                    // چوونەژوورەوە سەرکەوتوو بوو بەڵام هێشتا وەک ستاف تۆمار نەکراوە
+
+                // گەڕان لە Realtime Database
+                const staffRef = ref(
+                    db,
+                    "staff/" + user.uid
+                );
+
+                const snapshot = await get(staffRef);
+
+                // ئەگەر UID لە staff نەبوو
+                if (!snapshot.exists()) {
+
                     await signOut(auth);
+
                     goToLogin("not-staff");
+
                     return;
                 }
-                const data = staffSnap.val();
-                if (requireAdmin && data.role !== 'admin') {
-                    alert("ئەم بەشە تەنها بۆ بەڕێوەبەرە. ڕۆڵی تۆ: " + (data.role || '---'));
+
+                const data = snapshot.val();
+
+                // تەنها Admin
+                if (
+                    requireAdmin &&
+                    data.role !== "admin"
+                ) {
+
+                    alert(
+                        "ئەم بەشە تەنها بۆ بەڕێوەبەرە."
+                    );
+
                     window.location.href = "home.html";
+
                     return;
                 }
+
+                // زانیاری ستاف
                 resolve({
+
                     uid: user.uid,
-                    role: data.role || 'staff',
-                    name: data.name || user.phoneNumber || 'ستاف',
-                    phone: user.phoneNumber || data.phone || ''
+
+                    name:
+                        data.name ||
+                        user.email ||
+                        "ستاف",
+
+                    email:
+                        data.email ||
+                        user.email ||
+                        "",
+
+                    phone:
+                        data.phone ||
+                        "",
+
+                    role:
+                        data.role ||
+                        "staff"
+
                 });
-            } catch (e) {
-                console.error("هەڵەی پشکنینی ستاف:", e);
+
+            } catch (error) {
+
+                console.error(
+                    "هەڵە لە پشکنینی ستاف:",
+                    error
+                );
+
+                alert(
+                    "هەڵە لە پەیوەندی بە Database: " +
+                    error.message
+                );
+
                 goToLogin();
             }
+
         });
+
     });
 }
 
-function goToLogin(reason) {
-    const here = encodeURIComponent(location.pathname.split('/').pop());
-    let url = `index.html?redirect=${here}`;
-    if (reason) url += `&reason=${reason}`;
+
+function goToLogin(reason = "") {
+
+    const currentPage =
+        location.pathname.split("/").pop();
+
+    let url =
+        "index.html?redirect=" +
+        encodeURIComponent(currentPage);
+
+    if (reason) {
+
+        url +=
+            "&reason=" +
+            encodeURIComponent(reason);
+
+    }
+
     window.location.href = url;
 }
 
+
 export async function logout() {
-    await signOut(auth);
+
+    try {
+
+        await signOut(auth);
+
+    } catch (error) {
+
+        console.error(
+            "هەڵە لە چوونەدەرەوە:",
+            error
+        );
+
+    }
+
     window.location.href = "index.html";
 }
