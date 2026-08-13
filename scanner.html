@@ -182,11 +182,16 @@
     </div>
 
     <script type="module">
-        import { db } from "./firebase-config.js";
+        import { app } from "./firebase-config.js";
         import { requireStaffAuth, logout } from "./auth-guard.js";
-        import { doc, getDoc, setDoc, collection, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { 
+            getDatabase, ref, set, get, child, onValue, update 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // ===== پاسەوانی چوونەژوورەوە: پێش هەموو شتێک دڵنیابە ستافە =====
+        // بەکارهێنانی Realtime Database
+        const db = getDatabase(app);
+
+        // ===== پاسەوانی چوونەژوورەوە =====
         const staff = await requireStaffAuth();
         document.getElementById('staff-name-label').innerText = staff.name;
         const roleTag = document.getElementById('role-tag');
@@ -194,7 +199,7 @@
         if (staff.role === 'admin') roleTag.classList.add('admin');
         document.getElementById('btn-logout').addEventListener('click', logout);
 
-        // ===== وێنەی جێگرەوە (لۆکاڵ، پێویستی بە ئینتەرنێت نییە) =====
+        // ===== وێنەی جێگرەوە =====
         const PLACEHOLDER_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
             `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'>
                 <rect width='150' height='150' fill='#dfe6e9'/>
@@ -204,7 +209,7 @@
         );
         document.getElementById('st-image').src = PLACEHOLDER_IMG;
 
-        // ===== دەنگی فیدباک (بێ فایلی دەرەکی) =====
+        // ===== دەنگی فیدباک =====
         function beep(freq, duration, type = "sine") {
             try {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -218,7 +223,7 @@
                 osc.start();
                 osc.stop(ctx.currentTime + duration);
                 osc.onended = () => ctx.close();
-            } catch (e) { /* AudioContext لەوانەیە کارنەکات، گرنگ نییە */ }
+            } catch (e) {}
         }
         const soundSuccess = () => beep(880, 0.15);
         const soundError = () => { beep(220, 0.2, "square"); };
@@ -227,31 +232,29 @@
         // ===== دۆخی گشتی =====
         let port, reader, keepReading = false;
         let sessionActive = false;
-        let currentDateStr = null; // ڕۆژی دەوامی چالاک
+        let currentDateStr = null;
         let lastCardId = null;
         let lastScanTime = 0;
-        const SCAN_COOLDOWN_MS = 4000; // پارێزگاری لە دووبارە تۆمارکردنی هەمان کارت
+        const SCAN_COOLDOWN_MS = 4000;
 
-        let studentsCache = {};      // { cardId: {name, class, imageUrl} } - هەموو قوتابییان
-        let attendanceCache = {};    // { cardId: {status, ...} } - دۆخی ئەمڕۆ
-        let unsubAttendance = null;
+        let studentsCache = {};      
+        let attendanceCache = {};    
 
-        // هەموو قوتابییان بەردەوام دەخوێنینەوە (بۆ لیستی "کارتی بیرچووە" و ژمێردنی نەهاتووەکان)
-        onSnapshot(collection(db, "students"), (snap) => {
+        // بەردەوام خوێندنەوەی هەموو قوتابییان
+        onValue(ref(db, "students"), (snapshot) => {
             studentsCache = {};
-            snap.forEach(d => { studentsCache[d.id] = d.data(); });
+            if (snapshot.exists()) {
+                studentsCache = snapshot.val();
+            }
         }, (err) => console.error("هەڵەی خوێندنەوەی قوتابییان:", err));
 
         function subscribeAttendance(day) {
-            if (unsubAttendance) unsubAttendance();
-            unsubAttendance = onSnapshot(
-                collection(doc(db, "attendance", day), "records"),
-                (snap) => {
-                    attendanceCache = {};
-                    snap.forEach(d => { attendanceCache[d.id] = d.data(); });
-                },
-                (err) => console.error("هەڵەی خوێندنەوەی ئامادەبوون:", err)
-            );
+            onValue(ref(db, `attendance/${day}/records`), (snapshot) => {
+                attendanceCache = {};
+                if (snapshot.exists()) {
+                    attendanceCache = snapshot.val();
+                }
+            }, (err) => console.error("هەڵەی خوێندنەوەی ئامادەبوون:", err));
         }
 
         const el = (id) => document.getElementById(id);
@@ -264,7 +267,6 @@
         const btnEnd = el('btn-end');
         const btnForgot = el('btn-forgot');
 
-        // ===== پشکنینی پشتگیری وێبگەڕ بۆ Web Serial =====
         if (!("serial" in navigator)) {
             connStatus.innerText = "ئاردوینۆ: ئەم وێبگەڕە پشتگیری Web Serial ناکات (Chrome/Edge بەکاربهێنە)";
             btnConnect.disabled = true;
@@ -303,18 +305,17 @@
                     btnEnd.disabled = true;
                     btnEnd.textContent = 'چاوەڕوانبە...';
                     try {
-                        // batch نووسین بە گروپی ٤٠٠ تاکو لە سنووری Firestore زیاتر نەبێت
-                        for (let i = 0; i < notArrived.length; i += 400) {
-                            const batch = writeBatch(db);
-                            const chunk = notArrived.slice(i, i + 400);
-                            chunk.forEach(cardId => {
-                                const recRef = doc(collection(doc(db, "attendance", currentDateStr), "records"), cardId);
-                                batch.set(recRef, { status: 'absent', time: new Date().toISOString(), markedBy: staff.name }, { merge: true });
-                            });
-                            await batch.commit();
-                        }
+                        const updates = {};
+                        notArrived.forEach(cardId => {
+                            updates[`attendance/${currentDateStr}/records/${cardId}`] = {
+                                status: 'absent',
+                                time: new Date().toISOString(),
+                                markedBy: staff.name
+                            };
+                        });
+                        await update(ref(db), updates);
                     } catch (e) {
-                        alert("هەڵە لە تۆمارکردنی نەهاتووەکان: " + e);
+                        alert("هەڵە لە تۆمارکردنی نەهاتووەکان: " + e.message);
                     } finally {
                         btnEnd.textContent = 'کۆتایی دەوام';
                     }
@@ -398,7 +399,7 @@
             }
             const now = Date.now();
             if (cardId === lastCardId && (now - lastScanTime) < SCAN_COOLDOWN_MS) {
-                return; // خۆپارێزی لە دووبارە سکانکردنی هەمان کارت
+                return;
             }
             lastCardId = cardId;
             lastScanTime = now;
@@ -407,20 +408,21 @@
 
         async function checkStudentRFID(cardId) {
             try {
-                const studentDoc = await getDoc(doc(db, "students", cardId));
-                if (studentDoc.exists()) {
-                    const data = studentDoc.data();
+                const snapshot = await get(child(ref(db), `students/${cardId}`));
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
                     el('st-name').innerText = data.name || "بێ ناو";
                     el('st-class').innerText = data.class || "---";
                     el('st-card').innerText = cardId;
                     el('st-image').src = data.imageUrl || PLACEHOLDER_IMG;
                     display.classList.remove('blue-active', 'red-active');
 
-                    await setDoc(
-                        doc(collection(doc(db, "attendance", currentDateStr), "records"), cardId),
-                        { status: 'present', name: data.name || null, class: data.class || null, time: new Date().toISOString() },
-                        { merge: true }
-                    );
+                    await set(ref(db, `attendance/${currentDateStr}/records/${cardId}`), {
+                        status: 'present',
+                        name: data.name || null,
+                        class: data.class || null,
+                        time: new Date().toISOString()
+                    });
                     soundSuccess();
                 } else {
                     resetDisplay("کارتەکە نەناسراوە!");
@@ -435,7 +437,7 @@
             }
         }
 
-        // ===== Modal: قوتابی کارتەکەی بیرچووە (لیستی نەهاتووەکان) =====
+        // ===== Modal: قوتابی کارتەکەی بیرچووە =====
         const forgotModal = el('forgot-modal');
         const forgotSearch = el('forgot-search');
         const forgotError = el('forgot-error');
@@ -458,7 +460,7 @@
         function renderForgotList(query) {
             forgotList.innerHTML = '';
             const notArrived = Object.entries(studentsCache)
-                .filter(([cardId]) => !attendanceCache[cardId]) // تەنیا ئەوانەی هێشتا تۆمار نەکراون
+                .filter(([cardId]) => !attendanceCache[cardId])
                 .filter(([, s]) => {
                     if (!query) return true;
                     return (s.name || '').toLowerCase().includes(query) || (s.class || '').toLowerCase().includes(query);
@@ -485,11 +487,12 @@
                 return;
             }
             try {
-                await setDoc(
-                    doc(collection(doc(db, "attendance", currentDateStr), "records"), cardId),
-                    { status: 'forgot-card', name: student.name || null, class: student.class || null, time: new Date().toISOString() },
-                    { merge: true }
-                );
+                await set(ref(db, `attendance/${currentDateStr}/records/${cardId}`), {
+                    status: 'forgot-card',
+                    name: student.name || null,
+                    class: student.class || null,
+                    time: new Date().toISOString()
+                });
                 forgotModal.classList.remove('open');
                 display.classList.remove('red-active');
                 display.classList.add('blue-active');
