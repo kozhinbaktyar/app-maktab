@@ -226,13 +226,14 @@
     </div>
 
     <script type="module">
-        import { db, storage } from "./firebase-config.js";
+        import { app } from "./firebase-config.js";
         import { requireStaffAuth, logout } from "./auth-guard.js";
-        import {
-            getFirestore, doc, setDoc, getDoc, getDocs, collection, collectionGroup,
-            onSnapshot, deleteDoc
-        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        import { ref, uploadString, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+        import { 
+            getDatabase, ref, set, get, child, onValue, remove, update 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // بەکارهێنانی Realtime Database لەبری Firestore
+        const db = getDatabase(app);
 
         // ===== پاسەوانی چوونەژوورەوە =====
         const staff = await requireStaffAuth({ requireAdmin: true });
@@ -245,18 +246,17 @@
 
         // ===== دروستکردنی کۆدی نهێنی بۆ بەستنەوەی بەخێوکەر (Parent Link Code) =====
         function generateLinkCode(len = 14) {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // بێ کاراکتەری تێکەڵبوو (0/O, 1/I)
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
             const arr = new Uint32Array(len);
             crypto.getRandomValues(arr);
             return Array.from(arr, n => chars[n % chars.length]).join('');
         }
 
         // ===== دۆخی گشتی =====
-        let capturedImageBase64 = null; // وێنەی نوێی گیراو (ئەگەر هەبێت)
-        let editingCardId = null;       // ئەگەر لە دۆخی دەستکاریکردندابین، ئەم cardId‌ە پڕە
-        let studentsCache = [];         // دواین لیستی قوتابییان (لە onSnapshot)
-        let attendanceCache = {};       // {cardId: {status, time}} بۆ ڕۆژی چالاک
-        let unsubAttendance = null;
+        let capturedImageBase64 = null;
+        let editingCardId = null;
+        let studentsCache = [];
+        let attendanceCache = {};
         let currentDay = getTodayStr();
         let studentsLoaded = false;
         let attendanceLoaded = false;
@@ -359,7 +359,7 @@
             editingCardId = student.cardId;
             capturedImageBase64 = null;
             document.getElementById('card-id').value = student.cardId;
-            document.getElementById('card-id').disabled = true; // ناتوانرێت ID بگۆڕدرێت لە دەستکاریکردندا
+            document.getElementById('card-id').disabled = true;
             document.getElementById('student-name').value = student.name || '';
             document.getElementById('student-class').value = student.class || '';
             if (student.imageUrl) { showPreview(student.imageUrl); }
@@ -385,40 +385,41 @@
             submitBtn.textContent = 'چاوەڕوانبە...';
 
             try {
-                // ئاگاداری لە دووبارەبوونی cardId تەنیا لە کاتی زیادکردنی نوێدا
+                // پشکنین بۆ هەبوونی قوتابی
                 if (!editingCardId) {
-                    const existing = await getDoc(doc(db, "students", cardId));
-                    if (existing.exists()) {
-                        const ok = confirm(`ژمارەی کارت "${cardId}" پێشتر بۆ قوتابییەکی تر تۆمارکراوە (${existing.data().name}). ئایا دەتەوێت نوێی بکەیتەوە؟`);
+                    const snapshot = await get(child(ref(db), `students/${cardId}`));
+                    if (snapshot.exists()) {
+                        const ok = confirm(`ژمارەی کارت "${cardId}" پێشتر بۆ قوتابییەکی تر تۆمارکراوە (${snapshot.val().name}). ئایا دەتەوێت نوێی بکەیتەوە؟`);
                         if (!ok) { submitBtn.disabled = false; submitBtn.textContent = originalBtnText; return; }
                     }
                 }
 
-                const payload = { cardId, name, class: sClass };
+                let payload = { cardId, name, class: sClass };
 
-                // تەنیا لە کاتی زیادکردنی قوتابییەکی نوێ، کۆدی بەستنەوەی بەخێوکەر دروست دەکەین
-                if (!editingCardId) {
+                // هێنانی داتای کۆن ئەگەر لە دۆخی دەستکاریکردندا بین
+                if (editingCardId) {
+                    const oldSnap = await get(child(ref(db), `students/${cardId}`));
+                    if (oldSnap.exists()) {
+                        payload = { ...oldSnap.val(), ...payload };
+                    }
+                } else {
                     payload.linkCode = generateLinkCode();
                     payload.parentJoined = false;
                 }
 
-                // تەنیا ئەگەر وێنەیەکی نوێ هەبێت imageUrl دەنووسین، بۆ ئەوەی وێنەی پێشوو نەسڕدرێتەوە
+                // پاشکەوتکردنی وێنە بە شێوازی Base64
                 if (capturedImageBase64) {
-                    const storageRef = ref(storage, `students/${cardId}.jpg`);
-                    await uploadString(storageRef, capturedImageBase64, 'data_url');
-                    payload.imageUrl = await getDownloadURL(storageRef);
+                    payload.imageUrl = capturedImageBase64;
                 }
 
-                await setDoc(doc(db, "students", cardId), payload, { merge: true });
+                // پاشکەوتکردن لە Realtime Database
+                await set(ref(db, 'students/' + cardId), payload);
+
                 alert("قوتابی پاشکەوتکرا!" + (!editingCardId ? `\n\nکۆدی بەستنەوەی بەخێوکەر: ${payload.linkCode}\n(ئەم کۆدە لە خشتەی خوارەوەش دەتوانیت ببینیت)` : ''));
                 resetForm();
             } catch (err) {
                 console.error('هەڵەی تۆمارکردنی قوتابی:', err);
-                let msg = err && err.message ? err.message : String(err);
-                if (err && err.code === 'permission-denied') {
-                    msg = 'ڕێگەت پێنەدراوە بنووسیت (permission-denied). پێویستە Firestore Security Rules‌ت لە Firebase Console پشکنیت و دڵنیابیتەوە کە کراوەیە یان deploy کراوە.';
-                }
-                alert("هەڵە لە پاشکەوتکردن: " + msg);
+                alert("هەڵە لە پاشکەوتکردن: " + err.message);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalBtnText;
@@ -433,32 +434,33 @@
             });
         });
 
-        // ===== هێنانی داتا بە شێوەی زیندوو =====
-        onSnapshot(collection(db, "students"), (snapshot) => {
+        // ===== هێنانی داتا بە شێوەی زیندوو (Realtime Listener) =====
+        onValue(ref(db, 'students'), (snapshot) => {
             studentsCache = [];
-            snapshot.forEach(d => studentsCache.push(d.data()));
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                Object.keys(data).forEach(k => studentsCache.push(data[k]));
+            }
             studentsLoaded = true;
             render();
         }, (err) => console.error("هەڵەی خوێندنەوەی قوتابییان:", err));
 
         function subscribeAttendanceForDay(day) {
-            if (unsubAttendance) unsubAttendance();
             attendanceLoaded = false;
-            unsubAttendance = onSnapshot(
-                collection(doc(db, "attendance", day), "records"),
-                (snapshot) => {
-                    attendanceCache = {};
-                    snapshot.forEach(d => { attendanceCache[d.id] = d.data(); });
-                    attendanceLoaded = true;
-                    render();
-                },
-                (err) => console.error("هەڵەی خوێندنەوەی ئامادەبوون:", err)
-            );
+            onValue(ref(db, `attendance/${day}/records`), (snapshot) => {
+                attendanceCache = {};
+                if (snapshot.exists()) {
+                    attendanceCache = snapshot.val();
+                }
+                attendanceLoaded = true;
+                render();
+            }, (err) => console.error("هەڵەی خوێندنەوەی ئامادەبوون:", err));
         }
+
         subscribeAttendanceForDay(currentDay);
         document.getElementById('active-day-label').innerText = currentDay;
 
-        // پشکنین هەر ٦٠ چرکە جارێک، ئەگەر ڕۆژ گۆڕا panel خۆی نوێ بکاتەوە
+        // پشکنین هەر ٦٠ چرکە جارێک بۆ گۆڕانی ڕۆژ
         setInterval(() => {
             const nowStr = getTodayStr();
             if (nowStr !== currentDay) {
@@ -558,7 +560,6 @@
             document.getElementById('today-present-count').innerText = pCount;
             document.getElementById('today-absent-count').innerText = aCount;
 
-            // ڕیفرێشی گەڕان (بۆ ئەوەی فلتەری چالاک بمێنێتەوە)
             document.getElementById('student-search').dispatchEvent(new Event('input'));
         }
 
@@ -576,13 +577,13 @@
 
         async function changeStatus(cardId, newStatus) {
             try {
-                await setDoc(
-                    doc(collection(doc(db, "attendance", currentDay), "records"), cardId),
-                    { status: newStatus, time: new Date().toISOString(), changedBy: staff.name },
-                    { merge: true }
-                );
+                await update(ref(db, `attendance/${currentDay}/records/${cardId}`), {
+                    status: newStatus,
+                    time: new Date().toISOString(),
+                    changedBy: staff.name
+                });
             } catch (err) {
-                alert("هەڵە لە نوێکردنەوەی دۆخ: " + err);
+                alert("هەڵە لە نوێکردنەوەی دۆخ: " + err.message);
             }
         }
 
@@ -610,9 +611,9 @@
             const student = studentsCache.find(s => s.cardId === cardId);
             if (!student) return;
             try {
-                await setDoc(doc(db, "students", cardId), { parentJoined: !student.parentJoined }, { merge: true });
+                await update(ref(db, `students/${cardId}`), { parentJoined: !student.parentJoined });
             } catch (err) {
-                alert("هەڵە: " + err);
+                alert("هەڵە: " + err.message);
             }
         }
 
@@ -640,19 +641,14 @@
             const ok = confirm(`دڵنیای لە سڕینەوەی "${student.name}"؟ ئەم کردارە ناگەڕێتەوە.`);
             if (!ok) return;
             try {
-                await deleteDoc(doc(db, "students", student.cardId));
-                if (student.imageUrl) {
-                    try {
-                        await deleteObject(ref(storage, `students/${student.cardId}.jpg`));
-                    } catch (e) { /* لەوانەیە وێنە نەبووبێت، گرنگ نییە */ }
-                }
+                await remove(ref(db, `students/${student.cardId}`));
                 alert("قوتابیەکە سڕایەوە.");
             } catch (err) {
-                alert("هەڵە لە سڕینەوە: " + err);
+                alert("هەڵە لە سڕینەوە: " + err.message);
             }
         }
 
-        // ===== ڕاپۆرتی مانگانەی غایبات (بە داواکاری، نەک زیندوو) =====
+        // ===== ڕاپۆرتی مانگانەی غایبات =====
         async function loadMonthlyReport() {
             const tbody = document.getElementById('monthly-report-table-body');
             const loadingEl = document.getElementById('monthly-loading');
@@ -660,30 +656,28 @@
             loadingEl.style.display = 'block';
 
             try {
-                const yearMonth = currentDay.slice(0, 7); // "YYYY-MM"
+                const yearMonth = currentDay.slice(0, 7);
+                const snapshot = await get(child(ref(db), 'attendance'));
 
-                // هەموو تۆمارەکانی ئامادەبوون لە هەموو ڕۆژەکان دەهێنین (collectionGroup)
-                const snap = await getDocs(collectionGroup(db, 'records'));
+                const dayRecords = {};
+                if (snapshot.exists()) {
+                    const allDays = snapshot.val();
+                    Object.keys(allDays).forEach(dayId => {
+                        if (dayId.startsWith(yearMonth) && allDays[dayId].records) {
+                            dayRecords[dayId] = allDays[dayId].records;
+                        }
+                    });
+                }
 
-                // بۆ هەر ڕۆژ، کۆمەڵەی cardId ی ئەوانەی تۆماریان هەیە
-                const dayRecords = {}; // { 'YYYY-MM-DD': { cardId: status } }
-                snap.forEach(docSnap => {
-                    const dayId = docSnap.ref.parent.parent.id; // ناوی ڕۆژ لە path
-                    if (!dayId || !dayId.startsWith(yearMonth)) return;
-                    if (!dayRecords[dayId]) dayRecords[dayId] = {};
-                    dayRecords[dayId][docSnap.id] = docSnap.data().status;
-                });
-
-                const schoolDays = Object.keys(dayRecords); // ڕۆژانێک کە دەوامیان تێدا چالاک بووە
-
-                // ژمێردنی غایبات بۆ هەر قوتابی
-                const absenceCounts = {}; // cardId -> ژمارە
+                const schoolDays = Object.keys(dayRecords);
+                const absenceCounts = {};
                 studentsCache.forEach(s => { absenceCounts[s.cardId] = 0; });
 
                 schoolDays.forEach(day => {
                     const records = dayRecords[day];
                     studentsCache.forEach(s => {
-                        const status = records[s.cardId]; // undefined ئەگەر تۆمار نەکرابێت
+                        const statusObj = records[s.cardId];
+                        const status = statusObj ? statusObj.status : undefined;
                         const isAbsent = !status || status === 'absent';
                         if (isAbsent) absenceCounts[s.cardId] = (absenceCounts[s.cardId] || 0) + 1;
                     });
@@ -720,7 +714,7 @@
             } catch (err) {
                 loadingEl.style.display = 'none';
                 console.error(err);
-                alert("هەڵە لە هێنانی ڕاپۆرتی مانگانە: " + err);
+                alert("هەڵە لە هێنانی ڕاپۆرتی مانگانە: " + err.message);
             }
         }
     </script>
