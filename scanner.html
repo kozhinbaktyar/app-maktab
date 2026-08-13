@@ -188,10 +188,10 @@
             getDatabase, ref, set, get, child, onValue, update 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // بەکارهێنانی Realtime Database
+        // بەکارهێنانی Realtime Database لەبری Firestore
         const db = getDatabase(app);
 
-        // ===== پاسەوانی چوونەژوورەوە =====
+        // ===== پاسەوانی چوونەژوورەوە: پێش هەموو شتێک دڵنیابە ستافە =====
         const staff = await requireStaffAuth();
         document.getElementById('staff-name-label').innerText = staff.name;
         const roleTag = document.getElementById('role-tag');
@@ -199,7 +199,7 @@
         if (staff.role === 'admin') roleTag.classList.add('admin');
         document.getElementById('btn-logout').addEventListener('click', logout);
 
-        // ===== وێنەی جێگرەوە =====
+        // ===== وێنەی جێگرەوە (لۆکاڵ، پێویستی بە ئینتەرنێت نییە) =====
         const PLACEHOLDER_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
             `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'>
                 <rect width='150' height='150' fill='#dfe6e9'/>
@@ -209,7 +209,7 @@
         );
         document.getElementById('st-image').src = PLACEHOLDER_IMG;
 
-        // ===== دەنگی فیدباک =====
+        // ===== دەنگی فیدباک (بێ فایلی دەرەکی) =====
         function beep(freq, duration, type = "sine") {
             try {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -223,7 +223,7 @@
                 osc.start();
                 osc.stop(ctx.currentTime + duration);
                 osc.onended = () => ctx.close();
-            } catch (e) {}
+            } catch (e) { /* AudioContext لەوانەیە کارنەکات، گرنگ نییە */ }
         }
         const soundSuccess = () => beep(880, 0.15);
         const soundError = () => { beep(220, 0.2, "square"); };
@@ -232,15 +232,15 @@
         // ===== دۆخی گشتی =====
         let port, reader, keepReading = false;
         let sessionActive = false;
-        let currentDateStr = null;
+        let currentDateStr = null; // ڕۆژی دەوامی چالاک
         let lastCardId = null;
         let lastScanTime = 0;
-        const SCAN_COOLDOWN_MS = 4000;
+        const SCAN_COOLDOWN_MS = 4000; // پارێزگاری لە دووبارە تۆمارکردنی هەمان کارت
 
-        let studentsCache = {};      
-        let attendanceCache = {};    
+        let studentsCache = {};      // { cardId: {name, class, imageUrl} } - هەموو قوتابییان
+        let attendanceCache = {};    // { cardId: {status, ...} } - دۆخی ئەمڕۆ
 
-        // بەردەوام خوێندنەوەی هەموو قوتابییان
+        // هەموو قوتابییان بەردەوام دەخوێنینەوە لە Realtime Database
         onValue(ref(db, "students"), (snapshot) => {
             studentsCache = {};
             if (snapshot.exists()) {
@@ -267,6 +267,7 @@
         const btnEnd = el('btn-end');
         const btnForgot = el('btn-forgot');
 
+        // ===== پشکنینی پشتگیری وێبگەڕ بۆ Web Serial =====
         if (!("serial" in navigator)) {
             connStatus.innerText = "ئاردوینۆ: ئەم وێبگەڕە پشتگیری Web Serial ناکات (Chrome/Edge بەکاربهێنە)";
             btnConnect.disabled = true;
@@ -306,10 +307,11 @@
                     btnEnd.textContent = 'چاوەڕوانبە...';
                     try {
                         const updates = {};
+                        const timeNow = new Date().toISOString();
                         notArrived.forEach(cardId => {
                             updates[`attendance/${currentDateStr}/records/${cardId}`] = {
                                 status: 'absent',
-                                time: new Date().toISOString(),
+                                time: timeNow,
                                 markedBy: staff.name
                             };
                         });
@@ -399,7 +401,7 @@
             }
             const now = Date.now();
             if (cardId === lastCardId && (now - lastScanTime) < SCAN_COOLDOWN_MS) {
-                return;
+                return; // خۆپارێزی لە دووبارە سکانکردنی هەمان کارت
             }
             lastCardId = cardId;
             lastScanTime = now;
@@ -437,7 +439,7 @@
             }
         }
 
-        // ===== Modal: قوتابی کارتەکەی بیرچووە =====
+        // ===== Modal: قوتابی کارتەکەی بیرچووە (لیستی نەهاتووەکان) =====
         const forgotModal = el('forgot-modal');
         const forgotSearch = el('forgot-search');
         const forgotError = el('forgot-error');
@@ -460,7 +462,7 @@
         function renderForgotList(query) {
             forgotList.innerHTML = '';
             const notArrived = Object.entries(studentsCache)
-                .filter(([cardId]) => !attendanceCache[cardId])
+                .filter(([cardId]) => !attendanceCache[cardId]) // تەنیا ئەوانەی هێشتا تۆمار نەکراون
                 .filter(([, s]) => {
                     if (!query) return true;
                     return (s.name || '').toLowerCase().includes(query) || (s.class || '').toLowerCase().includes(query);
