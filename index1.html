@@ -109,7 +109,7 @@
 <script type="module">
     import { auth, db } from "./firebase-config.js";
     import { createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { ref, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
     const form = document.getElementById('signup-form');
     const errorEl = document.getElementById('error-msg');
@@ -135,8 +135,8 @@
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            // ٢. پاشکەوتکردنی زانیارییەکان لە کۆلێکشنی staff ڕاستەوخۆ بە UID-ی بەکارهێنەرەکە
-            await setDoc(doc(db, "staff", user.uid), {
+            // ٢. پاشکەوتکردنی زانیارییەکان لە Realtime Database ڕاستەوخۆ بە UID-ی بەکارهێنەرەکە
+            await set(ref(db, "staff/" + user.uid), {
                 name: name,
                 phone: phone,
                 role: role,
