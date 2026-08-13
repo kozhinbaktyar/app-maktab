@@ -211,23 +211,23 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getDatabase, ref, get, set, remove, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 import { getMessaging, getToken, onMessage, isSupported } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAsDs_tQemRJwwjH0m8U2YvlqZjWXHEO0k",
   authDomain: "test-school-53999.firebaseapp.com",
+  databaseURL: "https://test-school-53999-default-rtdb.firebaseio.com", // ⚠️ دڵنیابەرەوە لینکەکە هەمان Realtime Databaseی خۆت بێت
   projectId: "test-school-53999",
   storageBucket: "test-school-53999.firebasestorage.app",
   messagingSenderId: "847312056047",
   appId: "1:847312056047:web:44f84a1bb21e49d0b7751a"
 };
 
-// ⚠️ پێویستە ئەم کلیلە بگۆڕیت: Firebase Console → Project settings → Cloud Messaging → Web Push certificates
 const VAPID_KEY = "PASTE_YOUR_VAPID_KEY_HERE";
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const db = getDatabase(app);
 
 const PLACEHOLDER_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' width='62' height='62'>
@@ -290,25 +290,28 @@ function subscribeChild(cardId) {
   if (subscriptions.has(cardId)) return;
   const card = ensureChildCard(cardId);
 
-  const unsubStudent = onSnapshot(doc(db, "students", cardId), (snap) => {
+  // خوێندنەوە لە Realtime Database بۆ زانیاری قوتابی
+  const unsubStudent = onValue(ref(db, `students/${cardId}`), (snap) => {
     if (!snap.exists()) {
       card.querySelector('.c-name').textContent = "قوتابی نەدۆزرایەوە";
       return;
     }
-    const data = snap.data();
+    const data = snap.val();
     card.querySelector('.c-name').textContent = data.name || '---';
     card.querySelector('.c-class').textContent = data.class || '---';
     card.querySelector('.child-photo').src = data.imageUrl || PLACEHOLDER_IMG;
   }, (err) => console.error(err));
 
-  const unsubAttendance = onSnapshot(
-    doc(db, "attendance", currentDay, "records", cardId),
+  // خوێندنەوە لە Realtime Database بۆ دۆخی ئامادەبوون
+  const unsubAttendance = onValue(
+    ref(db, `attendance/${currentDay}/records/${cardId}`),
     (snap) => {
-      const status = snap.exists() ? snap.data().status : null;
+      const data = snap.exists() ? snap.val() : null;
+      const status = data ? data.status : null;
       const info = STATUS_LABELS[status];
       card.className = 'child-card' + (status ? ` st-${status}` : '');
       card.querySelector('.c-status').textContent = info ? info.label : 'هێشتا نەگەیشتووە / تۆمار نەکراوە';
-      const time = snap.exists() && snap.data().time ? new Date(snap.data().time) : null;
+      const time = data && data.time ? new Date(data.time) : null;
       card.querySelector('.c-time').textContent = time
         ? `کاتژمێر ${time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
         : '';
@@ -321,7 +324,11 @@ function subscribeChild(cardId) {
 
 function unsubscribeChild(cardId) {
   const subs = subscriptions.get(cardId);
-  if (subs) { subs.unsubStudent(); subs.unsubAttendance(); subscriptions.delete(cardId); }
+  if (subs) { 
+    if (typeof subs.unsubStudent === 'function') subs.unsubStudent(); 
+    if (typeof subs.unsubAttendance === 'function') subs.unsubAttendance(); 
+    subscriptions.delete(cardId); 
+  }
   const card = document.getElementById(`child-${cardId}`);
   if (card) card.remove();
 }
@@ -362,27 +369,41 @@ async function addChild() {
 
   document.getElementById('add-confirm').innerHTML = '<span class="loading-spinner"></span>';
   try {
-    const q = query(collection(db, "students"), where("linkCode", "==", linkCode));
-    const results = await getDocs(q);
-    if (results.empty) {
+    // گەڕان بەدوای linkCode لە Realtime Database
+    const studentsSnap = await get(ref(db, "students"));
+    let foundCardId = null;
+    let foundData = null;
+
+    if (studentsSnap.exists()) {
+      const allStudents = studentsSnap.val();
+      for (const [cardId, sData] of Object.entries(allStudents)) {
+        if (sData.linkCode === linkCode || cardId === linkCode) {
+          foundCardId = cardId;
+          foundData = sData;
+          break;
+        }
+      }
+    }
+
+    if (!foundCardId) {
       errEl.textContent = 'هیچ قوتابییەک بەم کۆدە نەدۆزرایەوە';
       document.getElementById('add-confirm').textContent = 'زیادکردن';
       return;
     }
-    const snap = results.docs[0];
-    const cardId = snap.id;
-    if (linkedCardIds.includes(cardId)) {
+
+    if (linkedCardIds.includes(foundCardId)) {
       errEl.textContent = 'ئەم منداڵە پێشتر زیادکراوە';
       document.getElementById('add-confirm').textContent = 'زیادکردن';
       return;
     }
-    linkedCardIds.push(cardId);
+
+    linkedCardIds.push(foundCardId);
     saveLinked();
-    subscribeChild(cardId);
+    subscribeChild(foundCardId);
     renderEmptyState();
     addModal.classList.remove('open');
-    showToast(`${snap.data().name} زیادکرا ✅`);
-    if (notifPermissionGranted) registerTokenForStudent(cardId);
+    showToast(`${foundData.name || 'قوتابی'} زیادکرا ✅`);
+    if (notifPermissionGranted) registerTokenForStudent(foundCardId);
   } catch (e) {
     console.error(e);
     errEl.textContent = 'کێشەی پەیوەندی، دووبارە هەوڵ بدەوە';
@@ -397,10 +418,13 @@ async function removeChild(cardId) {
   saveLinked();
   unsubscribeChild(cardId);
   renderEmptyState();
-  // هەوڵدان بۆ سڕینەوەی تۆکنی ئاگادارکردنەوە (باشترین هەوڵ، هەڵەکەی کار ناوەستێنێت)
+  
   try {
     const token = localStorage.getItem('fcmToken');
-    if (token) await deleteDoc(doc(db, "students", cardId, "parentTokens", token));
+    if (token) {
+      // سڕینەوە لە Realtime Database
+      await remove(ref(db, `students/${cardId}/parentTokens/${token}`));
+    }
   } catch (e) { /* گرنگ نییە */ }
 }
 
@@ -446,7 +470,12 @@ async function registerTokenForStudent(cardId, tokenOverride) {
   const token = tokenOverride || localStorage.getItem('fcmToken');
   if (!token) return;
   try {
-    await setDoc(doc(db, "students", cardId, "parentTokens", token), { createdAt: serverTimestamp() }, { merge: true });
+    // تۆمارکردن لە Realtime Database
+    const cleanTokenKey = token.replace(/[.#$\[\]]/g, "_"); // RTDB ڕێگە بە کارەکتەری Taybet نادات لە Key
+    await set(ref(db, `students/${cardId}/parentTokens/${cleanTokenKey}`), {
+      token: token,
+      createdAt: new Date().toISOString()
+    });
   } catch (e) { console.error('نەتوانرا تۆکن تۆمار بکرێت:', e); }
 }
 
