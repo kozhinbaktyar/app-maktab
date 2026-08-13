@@ -81,6 +81,7 @@
             background: #ddd;
         }
         .blue-active { background-color: #3498db !important; color: white !important; }
+        .green-active { background-color: #2ecc71 !important; color: white !important; }
         .red-active { background-color: #e74c3c !important; color: white !important; }
 
         /* Modal for "forgot card" */
@@ -119,6 +120,7 @@
         .student-pick-item {
             background: #2c3e50; padding: 10px 12px; border-radius: 6px; margin-bottom: 6px;
             cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+            user-select: none;
         }
         .student-pick-item:hover { background: #3d5470; }
         .student-pick-item .cls { color: #95a5a6; font-size: 12px; }
@@ -163,7 +165,7 @@
         </div>
 
         <div class="teacher-action">
-            <button id="btn-forgot" class="btn-blue" disabled>قوتابی کارتەکەی بیرچووە؟ (تۆمارکردن بە شین)</button>
+            <button id="btn-forgot" class="btn-blue" disabled>قوتابی کارتەکەی بیرچووە؟ (تۆمارکردن بە هەڵبژاردن)</button>
         </div>
     </div>
     </div>
@@ -172,6 +174,7 @@
     <div class="modal-overlay" id="forgot-modal">
         <div class="modal-box">
             <h3 style="margin-top:0;">کام قوتابی کارتەکەی بیرچووە؟</h3>
+            <p style="font-size:12px; color:#bdc3c7; margin-top:-8px;">(دوو کلیک بکه بۆ تۆمارکردن بە "هاتوو")</p>
             <input type="text" id="forgot-search" placeholder="گەڕان بە ناو یان پۆل...">
             <div class="modal-error" id="forgot-error"></div>
             <div class="student-pick-list" id="forgot-list"></div>
@@ -188,7 +191,7 @@
             getDatabase, ref, set, get, child, onValue, update 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // بەکارهێنانی Realtime Database لەبری Firestore
+        // بەکارهێنانی Realtime Database
         const db = getDatabase(app);
 
         // ===== پاسەوانی چوونەژوورەوە: پێش هەموو شتێک دڵنیابە ستافە =====
@@ -199,7 +202,7 @@
         if (staff.role === 'admin') roleTag.classList.add('admin');
         document.getElementById('btn-logout').addEventListener('click', logout);
 
-        // ===== وێنەی جێگرەوە (لۆکاڵ، پێویستی بە ئینتەرنێت نییە) =====
+        // ===== وێنەی جێگرەوە =====
         const PLACEHOLDER_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
             `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'>
                 <rect width='150' height='150' fill='#dfe6e9'/>
@@ -209,7 +212,7 @@
         );
         document.getElementById('st-image').src = PLACEHOLDER_IMG;
 
-        // ===== دەنگی فیدباک (بێ فایلی دەرەکی) =====
+        // ===== دەنگی فیدباک =====
         function beep(freq, duration, type = "sine") {
             try {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -223,7 +226,7 @@
                 osc.start();
                 osc.stop(ctx.currentTime + duration);
                 osc.onended = () => ctx.close();
-            } catch (e) { /* AudioContext لەوانەیە کارنەکات، گرنگ نییە */ }
+            } catch (e) { }
         }
         const soundSuccess = () => beep(880, 0.15);
         const soundError = () => { beep(220, 0.2, "square"); };
@@ -232,27 +235,27 @@
         // ===== دۆخی گشتی =====
         let port, reader, keepReading = false;
         let sessionActive = false;
-        let currentDateStr = null; // ڕۆژی دەوامی چالاک
+        let currentDateStr = null;
         let lastCardId = null;
         let lastScanTime = 0;
-        const SCAN_COOLDOWN_MS = 4000; // پارێزگاری لە دووبارە تۆمارکردنی هەمان کارت
+        const SCAN_COOLDOWN_MS = 4000;
 
-        let studentsCache = {};      // { cardId: {name, class, imageUrl} } - هەموو قوتابییان
-        let attendanceCache = {};    // { cardId: {status, ...} } - دۆخی ئەمڕۆ
+        let studentsCache = {};      // { cardId: {name, class, imageUrl} }
+        let attendanceCache = {};    // { cardId: {status, ...} }
 
-        // هەموو قوتابییان بەردەوام دەخوێنینەوە لە Realtime Database
-        onValue(ref(db, "students"), (snapshot) => {
+        // خوێندنەوەی بەردەوامی هەموو قوتابییان لە Realtime Database
+        onValue(ref(db, "students"), (snap) => {
             studentsCache = {};
-            if (snapshot.exists()) {
-                studentsCache = snapshot.val();
+            if (snap.exists()) {
+                studentsCache = snap.val();
             }
         }, (err) => console.error("هەڵەی خوێندنەوەی قوتابییان:", err));
 
         function subscribeAttendance(day) {
-            onValue(ref(db, `attendance/${day}/records`), (snapshot) => {
+            onValue(ref(db, `attendance/${day}/records`), (snap) => {
                 attendanceCache = {};
-                if (snapshot.exists()) {
-                    attendanceCache = snapshot.val();
+                if (snap.exists()) {
+                    attendanceCache = snap.val();
                 }
             }, (err) => console.error("هەڵەی خوێندنەوەی ئامادەبوون:", err));
         }
@@ -267,7 +270,6 @@
         const btnEnd = el('btn-end');
         const btnForgot = el('btn-forgot');
 
-        // ===== پشکنینی پشتگیری وێبگەڕ بۆ Web Serial =====
         if (!("serial" in navigator)) {
             connStatus.innerText = "ئاردوینۆ: ئەم وێبگەڕە پشتگیری Web Serial ناکات (Chrome/Edge بەکاربهێنە)";
             btnConnect.disabled = true;
@@ -278,7 +280,7 @@
             el('st-name').innerText = message;
             el('st-class').innerText = "---";
             el('st-card').innerText = "---";
-            display.classList.remove('blue-active', 'red-active');
+            display.classList.remove('blue-active', 'green-active', 'red-active');
         }
 
         // ===== دەستپێکردن/کۆتایی دەوام =====
@@ -295,7 +297,10 @@
         });
 
         btnEnd.addEventListener('click', async () => {
-            const notArrived = Object.keys(studentsCache).filter(cardId => !attendanceCache[cardId]);
+            const notArrived = Object.keys(studentsCache).filter(cardId => {
+                const rec = attendanceCache[cardId];
+                return !rec || rec.status === 'absent';
+            });
 
             if (notArrived.length > 0) {
                 const ok = confirm(
@@ -307,11 +312,10 @@
                     btnEnd.textContent = 'چاوەڕوانبە...';
                     try {
                         const updates = {};
-                        const timeNow = new Date().toISOString();
                         notArrived.forEach(cardId => {
                             updates[`attendance/${currentDateStr}/records/${cardId}`] = {
                                 status: 'absent',
-                                time: timeNow,
+                                time: new Date().toISOString(),
                                 markedBy: staff.name
                             };
                         });
@@ -401,7 +405,7 @@
             }
             const now = Date.now();
             if (cardId === lastCardId && (now - lastScanTime) < SCAN_COOLDOWN_MS) {
-                return; // خۆپارێزی لە دووبارە سکانکردنی هەمان کارت
+                return;
             }
             lastCardId = cardId;
             lastScanTime = now;
@@ -417,13 +421,14 @@
                     el('st-class').innerText = data.class || "---";
                     el('st-card').innerText = cardId;
                     el('st-image').src = data.imageUrl || PLACEHOLDER_IMG;
-                    display.classList.remove('blue-active', 'red-active');
+                    display.classList.remove('blue-active', 'green-active', 'red-active');
 
                     await set(ref(db, `attendance/${currentDateStr}/records/${cardId}`), {
                         status: 'present',
                         name: data.name || null,
                         class: data.class || null,
-                        time: new Date().toISOString()
+                        time: new Date().toISOString(),
+                        markedBy: staff.name
                     });
                     soundSuccess();
                 } else {
@@ -439,7 +444,7 @@
             }
         }
 
-        // ===== Modal: قوتابی کارتەکەی بیرچووە (لیستی نەهاتووەکان) =====
+        // ===== Modal: قوتابی کارتەکەی بیرچووە / نەهاتووەکان =====
         const forgotModal = el('forgot-modal');
         const forgotSearch = el('forgot-search');
         const forgotError = el('forgot-error');
@@ -461,8 +466,13 @@
 
         function renderForgotList(query) {
             forgotList.innerHTML = '';
+            
+            // تەنیا ئەو قوتابییانە نیشان دەدات کە لە لیستەکەدا نیین یان دۆخیان غایبە (نەهاتوون)
             const notArrived = Object.entries(studentsCache)
-                .filter(([cardId]) => !attendanceCache[cardId]) // تەنیا ئەوانەی هێشتا تۆمار نەکراون
+                .filter(([cardId]) => {
+                    const rec = attendanceCache[cardId];
+                    return !rec || rec.status === 'absent';
+                })
                 .filter(([, s]) => {
                     if (!query) return true;
                     return (s.name || '').toLowerCase().includes(query) || (s.class || '').toLowerCase().includes(query);
@@ -470,7 +480,7 @@
                 .sort(([, a], [, b]) => (a.name || '').localeCompare(b.name || '', 'ckb'));
 
             if (notArrived.length === 0) {
-                forgotList.innerHTML = '<div class="empty-pick">هیچ قوتابییەکی نەهاتوو نەماوە کە بگونجێت</div>';
+                forgotList.innerHTML = '<div class="empty-pick">هیچ قوتابییەکی نەهاتوو یان غایب نەماوە</div>';
                 return;
             }
 
@@ -478,27 +488,49 @@
                 const item = document.createElement('div');
                 item.className = 'student-pick-item';
                 item.innerHTML = `<span>${s.name || 'بێ ناو'}</span><span class="cls">${s.class || '---'}</span>`;
-                item.addEventListener('click', () => markForgotCard(cardId, s));
+                
+                // دوو کلیک بۆ بڵندکردن و وەک "هاتوو" (present) ئەژمارکردن
+                item.addEventListener('dblclick', () => markForgotCard(cardId, s, 'present'));
+                
+                // یەک کلیکیش وەک (forgot-card) تۆماری دەکات
+                item.addEventListener('click', (e) => {
+                    // ئەگەر دوو کلیک کرا، ڕێگری لە یەک کلیک بکە
+                    if (e.detail === 1) {
+                        setTimeout(() => {
+                            if (e.detail === 1) markForgotCard(cardId, s, 'forgot-card');
+                        }, 200);
+                    }
+                });
+
                 forgotList.appendChild(item);
             });
         }
 
-        async function markForgotCard(cardId, student) {
+        async function markForgotCard(cardId, student, targetStatus = 'forgot-card') {
             if (!sessionActive) {
                 forgotError.innerText = "دەوام دەستپێنەکراوە";
                 return;
             }
             try {
                 await set(ref(db, `attendance/${currentDateStr}/records/${cardId}`), {
-                    status: 'forgot-card',
+                    status: targetStatus,
                     name: student.name || null,
                     class: student.class || null,
-                    time: new Date().toISOString()
+                    time: new Date().toISOString(),
+                    markedBy: staff.name
                 });
+                
                 forgotModal.classList.remove('open');
-                display.classList.remove('red-active');
-                display.classList.add('blue-active');
-                el('st-name').innerText = student.name || "تۆمارکرا";
+                display.classList.remove('red-active', 'blue-active', 'green-active');
+                
+                if (targetStatus === 'present') {
+                    display.classList.add('green-active');
+                    el('st-name').innerText = (student.name || "تۆمارکرا") + " (هاتوو - دوو کلیک)";
+                } else {
+                    display.classList.add('blue-active');
+                    el('st-name').innerText = (student.name || "تۆمارکرا") + " (کارتی بیرچووە)";
+                }
+
                 el('st-class').innerText = student.class || "---";
                 el('st-card').innerText = cardId;
                 el('st-image').src = student.imageUrl || PLACEHOLDER_IMG;
