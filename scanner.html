@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>شاشەی پشکنینی کارت - ئاردوینۆ</title>
+    <title>شاشەی پشکنینی کارت - </title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -146,7 +146,7 @@
         <h2>سیستەمی تۆمارکردنی ئامادەبووان</h2>
 
         <div class="control-panel">
-            <button id="btn-connect" class="btn">پەیوەستکردنی ئاردوینۆ (Serial)</button>
+            <button id="btn-connect" class="btn">پەیوەستکردنی  (Serial)</button>
             <button id="btn-disconnect" class="btn btn-danger" style="display:none;">بڕینی پەیوەندی</button>
         </div>
         <div class="control-panel">
@@ -154,7 +154,7 @@
             <button id="btn-end" class="btn btn-end" disabled>کۆتایی دەوام</button>
         </div>
 
-        <div class="status-bar" id="connection-status">ئاردوینۆ: پەیوەست نییە</div>
+        <div class="status-bar" id="connection-status">: پەیوەست نییە</div>
         <div class="session-bar" id="session-status">دەوام: دەستپێنەکراوە</div>
 
         <div class="student-card-display" id="student-display">
@@ -271,7 +271,7 @@
         const btnForgot = el('btn-forgot');
 
         if (!("serial" in navigator)) {
-            connStatus.innerText = "ئاردوینۆ: ئەم وێبگەڕە پشتگیری Web Serial ناکات (Chrome/Edge بەکاربهێنە)";
+            connStatus.innerText = ": ئەم وێبگەڕە پشتگیری Web Serial ناکات (Chrome/Edge بەکاربهێنە)";
             btnConnect.disabled = true;
         }
 
@@ -337,18 +337,18 @@
             resetDisplay("دەوام کۆتایی هات");
         });
 
-        // ===== پەیوەستکردن بە ئاردوینۆ =====
+        // ===== پەیوەستکردن بە  =====
         btnConnect.addEventListener('click', async () => {
             try {
                 port = await navigator.serial.requestPort();
                 await port.open({ baudRate: 9600 });
-                connStatus.innerText = "ئاردوینۆ: پەیوەستە 🟢";
+                connStatus.innerText = ": پەیوەستە 🟢";
                 btnConnect.style.display = 'none';
                 btnDisconnect.style.display = 'inline-block';
                 keepReading = true;
                 readSerial();
             } catch (e) {
-                connStatus.innerText = "ئاردوینۆ: پەیوەست نییە 🔴";
+                connStatus.innerText = ": پەیوەست نییە 🔴";
                 alert("پەیوەستکردن سەرکەوتوو نەبوو: " + e);
             }
         });
@@ -368,7 +368,7 @@
             } catch (e) {
                 console.error("هەڵە لە کاتی بڕینی پەیوەندی:", e);
             }
-            connStatus.innerText = "ئاردوینۆ: پەیوەست نییە";
+            connStatus.innerText = ": پەیوەست نییە";
             btnConnect.style.display = 'inline-block';
             btnDisconnect.style.display = 'none';
         });
