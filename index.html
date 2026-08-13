@@ -104,7 +104,7 @@
 <script type="module">
     import { auth, db } from "./firebase-config.js";
     import { signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { ref, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
     const el = (id) => document.getElementById(id);
     const loginForm = el('login-form');
@@ -138,8 +138,8 @@
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const uid = userCredential.user.uid;
 
-            // پشکنین: ئایا ئەم uid لە staff تۆمارکراوە؟
-            const staffSnap = await getDoc(doc(db, "staff", uid));
+            // پشکنین: ئایا ئەم uid لە staff تۆمارکراوە؟ (Realtime Database)
+            const staffSnap = await get(ref(db, "staff/" + uid));
             if (staffSnap.exists()) {
                 window.location.href = redirectTo;
             } else {
