@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ku" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>پانێڵی بەڕێوبەر - سیستەمی غایبات</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .top-bar {
+            background: #16324f; padding: 10px 24px; box-sizing: border-box;
+            display: flex; justify-content: space-between; align-items: center; font-size: 13px;
+            color: #cfe4f0;
+        }
+        .top-bar a { color: #8fc7e3; text-decoration: none; margin-inline-start: 14px; }
+        .top-bar a:hover { text-decoration: underline; }
+        .top-bar .role-tag {
+            background: #2ecc71; color: #0f2740; font-size: 11px; font-weight: bold;
+            padding: 2px 8px; border-radius: 10px; margin-left: 6px;
+        }
+        .top-bar .role-tag.admin { background: #f1c40f; }
+        .top-bar button {
+            background: none; border: 1px solid #445; color: #ccc; padding: 4px 12px;
+            border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px;
+        }
+        .top-bar button:hover { background: #c0392b; border-color: #c0392b; color: white; }
+        .page-wrap { padding: 20px; }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h2, h3, h4 { color: #2c3e50; }
+        .stats-container {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            flex: 1;
+            min-width: 140px;
+            padding: 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .present-card { background-color: #2ecc71; }
+        .absent-card { background-color: #e74c3c; }
+        .day-card { background-color: #34495e; font-size: 15px; }
+
+        .menu-buttons { display: flex; gap: 15px; margin: 20px 0; flex-wrap: wrap; }
+        .btn-menu {
+            background-color: #34495e; color: white; padding: 12px 24px; font-size: 16px;
+            border: none; border-radius: 6px; cursor: pointer; transition: background 0.3s;
+        }
+        .btn-menu:hover { background-color: #2c3e50; }
+
+        .lists-wrapper { display: flex; gap: 20px; flex-wrap: wrap; }
+        .list-box { flex: 1; min-width: 260px; background: #ecf0f1; padding: 15px; border-radius: 8px; min-height: 200px; }
+        ul { list-style: none; padding: 0; }
+        li {
+            background: white; padding: 10px; margin-bottom: 8px; border-radius: 5px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 6px;
+        }
+
+        .status-blue { background-color: #3498db !important; color: white; }
+        .status-orange { background-color: #e67e22 !important; color: white; }
+        .status-red { background-color: #c0392b !important; color: white; }
+        .status-leave { background-color: #f1c40f !important; color: black; }
+
+        input[type="text"], input[type="file"], select {
+            width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        table, th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background-color: #34495e; color: white; }
+        button { padding: 6px 12px; border: none; cursor: pointer; border-radius: 4px; margin: 2px; }
+        .btn-save { background: #27ae60; color: white; width: 100%; padding: 12px; font-size: 16px; }
+        .btn-cancel-edit { background: #95a5a6; color: white; width: 100%; padding: 10px; font-size: 14px; margin-top: 6px; display: none; }
+        .btn-edit { background: #2980b9; color: white; }
+        .btn-delete { background: #c0392b; color: white; }
+        .btn-pdf { background: #8e44ad; color: white; }
+        .btn-link { background: #16a085; color: white; }
+        .btn-toggle-parent { background: #16a085; color: white; font-size: 12px; }
+
+        .loading-text { text-align: center; color: #888; padding: 20px; }
+        .edit-banner {
+            display: none; background: #fff3cd; color: #7a5c00; padding: 8px 12px;
+            border-radius: 5px; margin-bottom: 10px; font-size: 14px;
+        }
+
+        .modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0;
+            width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); overflow-y: auto;
+        }
+        .modal-content {
+            background-color: #fff; margin: 5% auto; padding: 25px; border-radius: 10px;
+            width: 70%; max-width: 800px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            position: relative; animation: fadeIn 0.3s ease-out;
+        }
+        .close-btn { position: absolute; left: 20px; top: 15px; font-size: 28px; font-weight: bold; color: #aaa; cursor: pointer; }
+        .close-btn:hover { color: #000; }
+        @keyframes fadeIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .img-preview { width: 100px; height: 100px; object-fit: cover; border-radius: 6px; display: none; margin-top: 8px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+
+    <div class="top-bar">
+        <div>
+            <span class="role-tag" id="role-tag">...</span>
+            <span id="staff-name-label">چاوەڕوانبە...</span>
+        </div>
+        <div>
+            <a href="home.html">🏠 سەرەکی</a>
+            <a href="scanner.html">📡 سکانەر</a>
+            <button id="btn-logout">چوونەدەرەوە</button>
+        </div>
+    </div>
+
+    <div class="page-wrap">
+    <div class="container">
+        <h2>پانێڵی بەڕێوبەرایەتی قوتابخانە</h2>
+
+        <div class="stats-container">
+            <div class="stat-card day-card">ڕۆژی چالاک: <span id="active-day-label">--</span></div>
+            <div class="stat-card present-card">قوتابیانی ئامادە: <span id="today-present-count">0</span></div>
+            <div class="stat-card absent-card">قوتابیانی غایب: <span id="today-absent-count">0</span></div>
+        </div>
+
+        <div class="menu-buttons">
+            <button class="btn-menu" id="btn-open-register">➕ تۆمارکردنی قوتابی نوێ</button>
+            <button class="btn-menu" id="btn-open-reports">📊 ڕاپۆرتی مانگانە و بەخێوکەران</button>
+        </div>
+
+        <hr>
+
+        <section class="section">
+            <h3>ڕاپۆرتی ڕۆژانە</h3>
+            <div id="daily-loading" class="loading-text">چاوەڕوانبە، داتا باردەکرێت...</div>
+            <div class="lists-wrapper" id="daily-lists" style="display:none;">
+                <div class="list-box">
+                    <h4>لیستی ئامادبووان (هاتوو)</h4>
+                    <ul id="present-list"></ul>
+                </div>
+                <div class="list-box">
+                    <h4>لیستی ئامادەنەبووان (نەهاتوو)</h4>
+                    <ul id="absent-list"></ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== Modal: تۆمارکردن/دەستکاری ===== -->
+        <div id="register-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-btn" data-close="register-modal">&times;</span>
+                <h3>تۆمارکردن و دەستکاریکردنی قوتابی</h3>
+                <div class="edit-banner" id="edit-banner">✏️ لە دۆخی دەستکاریکردنیت بۆ قوتابییەکی هەبوو</div>
+                <form id="student-form">
+                    <input type="text" id="card-id" placeholder="ژمارەی کارت (RFID)" required>
+                    <input type="text" id="student-name" placeholder="ناوی تەواو" required>
+                    <input type="text" id="student-class" placeholder="پۆل" required>
+
+                    <div class="image-section">
+                        <label>وێنەی قوتابی (ئەگەر بیهێڵیتەوە بەتاڵ لە کاتی دەستکاریکردن، وێنەی پێشوو دەمێنێتەوە):</label>
+                        <input type="file" id="student-file" accept="image/*">
+                        <video id="webcam" autoplay playsinline style="width:150px; display:none;"></video>
+                        <button type="button" id="btn-capture">کردنەوەی کامێرا</button>
+                        <button type="button" id="btn-take-pic" style="display:none;">گرتنی وێنە</button>
+                        <canvas id="canvas" style="display:none;"></canvas>
+                        <br>
+                        <img id="img-preview" class="img-preview">
+                    </div>
+                    <button type="submit" class="btn-save">پاشکەوتکردن / نوێکردنەوە</button>
+                    <button type="button" class="btn-cancel-edit" id="btn-cancel-edit">پاشگەزبوونەوە لە دەستکاریکردن</button>
+                </form>
+
+                <h4>لیستی گشتی قوتابییان بۆ دەستکاریکردن یان سڕینەوە</h4>
+                <input type="text" id="student-search" placeholder="گەڕان بە ناو، پۆل یان ژمارەی کارت...">
+                <table>
+                    <thead>
+                        <tr><th>کارت</th><th>ناو</th><th>پۆل</th><th>لینکی بەخێوکەر</th><th>کردارەکان</th></tr>
+                    </thead>
+                    <tbody id="all-students-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ===== Modal: ڕاپۆرت ===== -->
+        <div id="reports-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-btn" data-close="reports-modal">&times;</span>
+
+                <h3>ڕاپۆرتی غایباتی مانگی ئێستا (تەنها ئەوانەی غایبیان هەیە)</h3>
+                <div id="monthly-loading" class="loading-text" style="display:none;">چاوەڕوانبە، ژمێردنی غایبات...</div>
+                <table>
+                    <thead><tr><th>ناو</th><th>پۆل</th><th>کۆی گشتی غایبات</th></tr></thead>
+                    <tbody id="monthly-report-table-body"></tbody>
+                </table>
+
+                <hr>
+
+                <h3>دۆخی جۆینبوونی بەخێوکەران</h3>
+                <p style="font-size:13px; color:#777;">تێبینی: ئەم دۆخە بەدەستی لەلایەن بەڕێوبەرەوە دەگۆڕدرێت (هێشتا سیستەمی جۆینبوونی ئۆتۆماتیکی نییە).</p>
+                <ul id="parents-status-list"></ul>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <script type="module">
+        import { db, storage } from "./firebase-config.js";
+        import { requireStaffAuth, logout } from "./auth-guard.js";
+        import {
+            getFirestore, doc, setDoc, getDoc, getDocs, collection, collectionGroup,
+            onSnapshot, deleteDoc
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { ref, uploadString, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
+        // ===== پاسەوانی چوونەژوورەوە =====
+        const staff = await requireStaffAuth({ requireAdmin: true });
+        const isAdmin = true;
+        document.getElementById('staff-name-label').innerText = staff.name;
+        const roleTagEl = document.getElementById('role-tag');
+        roleTagEl.innerText = isAdmin ? 'بەڕێوەبەر' : 'ستاف';
+        if (isAdmin) roleTagEl.classList.add('admin');
+        document.getElementById('btn-logout').addEventListener('click', logout);
+
+        // ===== دروستکردنی کۆدی نهێنی بۆ بەستنەوەی بەخێوکەر (Parent Link Code) =====
+        function generateLinkCode(len = 14) {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // بێ کاراکتەری تێکەڵبوو (0/O, 1/I)
+            const arr = new Uint32Array(len);
+            crypto.getRandomValues(arr);
+            return Array.from(arr, n => chars[n % chars.length]).join('');
+        }
+
+        // ===== دۆخی گشتی =====
+        let capturedImageBase64 = null; // وێنەی نوێی گیراو (ئەگەر هەبێت)
+        let editingCardId = null;       // ئەگەر لە دۆخی دەستکاریکردندابین، ئەم cardId‌ە پڕە
+        let studentsCache = [];         // دواین لیستی قوتابییان (لە onSnapshot)
+        let attendanceCache = {};       // {cardId: {status, time}} بۆ ڕۆژی چالاک
+        let unsubAttendance = null;
+        let currentDay = getTodayStr();
+        let studentsLoaded = false;
+        let attendanceLoaded = false;
+
+        function getTodayStr() { return new Date().toISOString().split('T')[0]; }
+
+        // ===== یارمەتیدەرەکانی مۆدال =====
+        function openModal(id) { document.getElementById(id).style.display = "block"; }
+        function closeModal(id) {
+            document.getElementById(id).style.display = "none";
+            if (id === 'register-modal') stopWebcam();
+        }
+        document.querySelectorAll('[data-close]').forEach(elm => {
+            elm.addEventListener('click', () => closeModal(elm.dataset.close));
+        });
+        window.addEventListener('click', (event) => {
+            if (event.target.classList.contains('modal')) {
+                closeModal(event.target.id);
+            }
+        });
+
+        document.getElementById('btn-open-register').addEventListener('click', () => {
+            resetForm();
+            openModal('register-modal');
+        });
+        document.getElementById('btn-open-reports').addEventListener('click', () => {
+            openModal('reports-modal');
+            loadMonthlyReport();
+        });
+
+        // ===== کامێرا =====
+        let webcamStream = null;
+        document.getElementById('btn-capture').addEventListener('click', startWebcam);
+        document.getElementById('btn-take-pic').addEventListener('click', takeSnapshot);
+
+        async function startWebcam() {
+            const video = document.getElementById('webcam');
+            document.getElementById('btn-take-pic').style.display = 'inline-block';
+            try {
+                webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = webcamStream;
+                video.style.display = 'block';
+            } catch (e) {
+                alert("نەتوانرا کامێرا بکرێتەوە: " + e);
+            }
+        }
+
+        function takeSnapshot() {
+            const video = document.getElementById('webcam');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            capturedImageBase64 = canvas.toDataURL('image/jpeg');
+            showPreview(capturedImageBase64);
+            stopWebcam();
+        }
+
+        function stopWebcam() {
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => track.stop());
+                webcamStream = null;
+            }
+            document.getElementById('webcam').style.display = 'none';
+            document.getElementById('btn-take-pic').style.display = 'none';
+        }
+
+        function showPreview(src) {
+            const img = document.getElementById('img-preview');
+            img.src = src;
+            img.style.display = 'inline-block';
+        }
+
+        // ===== هەڵبژاردنی فایلی وێنە =====
+        document.getElementById('student-file').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                capturedImageBase64 = reader.result;
+                showPreview(capturedImageBase64);
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // ===== فۆرم: نوێ یان دەستکاری =====
+        function resetForm() {
+            editingCardId = null;
+            capturedImageBase64 = null;
+            document.getElementById('student-form').reset();
+            document.getElementById('card-id').disabled = false;
+            document.getElementById('img-preview').style.display = 'none';
+            document.getElementById('edit-banner').style.display = 'none';
+            document.getElementById('btn-cancel-edit').style.display = 'none';
+            stopWebcam();
+        }
+
+        function loadStudentForEdit(student) {
+            editingCardId = student.cardId;
+            capturedImageBase64 = null;
+            document.getElementById('card-id').value = student.cardId;
+            document.getElementById('card-id').disabled = true; // ناتوانرێت ID بگۆڕدرێت لە دەستکاریکردندا
+            document.getElementById('student-name').value = student.name || '';
+            document.getElementById('student-class').value = student.class || '';
+            if (student.imageUrl) { showPreview(student.imageUrl); }
+            else { document.getElementById('img-preview').style.display = 'none'; }
+            document.getElementById('edit-banner').style.display = 'block';
+            document.getElementById('btn-cancel-edit').style.display = 'block';
+            openModal('register-modal');
+        }
+
+        document.getElementById('btn-cancel-edit').addEventListener('click', resetForm);
+
+        document.getElementById('student-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const cardId = document.getElementById('card-id').value.trim();
+            const name = document.getElementById('student-name').value.trim();
+            const sClass = document.getElementById('student-class').value.trim();
+
+            if (!cardId || !name || !sClass) return;
+
+            const submitBtn = document.querySelector('#student-form .btn-save');
+            const originalBtnText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'چاوەڕوانبە...';
+
+            try {
+                // ئاگاداری لە دووبارەبوونی cardId تەنیا لە کاتی زیادکردنی نوێدا
+                if (!editingCardId) {
+                    const existing = await getDoc(doc(db, "students", cardId));
+                    if (existing.exists()) {
+                        const ok = confirm(`ژمارەی کارت "${cardId}" پێشتر بۆ قوتابییەکی تر تۆمارکراوە (${existing.data().name}). ئایا دەتەوێت نوێی بکەیتەوە؟`);
+                        if (!ok) { submitBtn.disabled = false; submitBtn.textContent = originalBtnText; return; }
+                    }
+                }
+
+                const payload = { cardId, name, class: sClass };
+
+                // تەنیا لە کاتی زیادکردنی قوتابییەکی نوێ، کۆدی بەستنەوەی بەخێوکەر دروست دەکەین
+                if (!editingCardId) {
+                    payload.linkCode = generateLinkCode();
+                    payload.parentJoined = false;
+                }
+
+                // تەنیا ئەگەر وێنەیەکی نوێ هەبێت imageUrl دەنووسین، بۆ ئەوەی وێنەی پێشوو نەسڕدرێتەوە
+                if (capturedImageBase64) {
+                    const storageRef = ref(storage, `students/${cardId}.jpg`);
+                    await uploadString(storageRef, capturedImageBase64, 'data_url');
+                    payload.imageUrl = await getDownloadURL(storageRef);
+                }
+
+                await setDoc(doc(db, "students", cardId), payload, { merge: true });
+                alert("قوتابی پاشکەوتکرا!" + (!editingCardId ? `\n\nکۆدی بەستنەوەی بەخێوکەر: ${payload.linkCode}\n(ئەم کۆدە لە خشتەی خوارەوەش دەتوانیت ببینیت)` : ''));
+                resetForm();
+            } catch (err) {
+                console.error('هەڵەی تۆمارکردنی قوتابی:', err);
+                let msg = err && err.message ? err.message : String(err);
+                if (err && err.code === 'permission-denied') {
+                    msg = 'ڕێگەت پێنەدراوە بنووسیت (permission-denied). پێویستە Firestore Security Rules‌ت لە Firebase Console پشکنیت و دڵنیابیتەوە کە کراوەیە یان deploy کراوە.';
+                }
+                alert("هەڵە لە پاشکەوتکردن: " + msg);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalBtnText;
+            }
+        });
+
+        // ===== گەڕان لە خشتەی قوتابییان =====
+        document.getElementById('student-search').addEventListener('input', (e) => {
+            const q = e.target.value.trim().toLowerCase();
+            document.querySelectorAll('#all-students-table-body tr').forEach(row => {
+                row.style.display = row.innerText.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+
+        // ===== هێنانی داتا بە شێوەی زیندوو =====
+        onSnapshot(collection(db, "students"), (snapshot) => {
+            studentsCache = [];
+            snapshot.forEach(d => studentsCache.push(d.data()));
+            studentsLoaded = true;
+            render();
+        }, (err) => console.error("هەڵەی خوێندنەوەی قوتابییان:", err));
+
+        function subscribeAttendanceForDay(day) {
+            if (unsubAttendance) unsubAttendance();
+            attendanceLoaded = false;
+            unsubAttendance = onSnapshot(
+                collection(doc(db, "attendance", day), "records"),
+                (snapshot) => {
+                    attendanceCache = {};
+                    snapshot.forEach(d => { attendanceCache[d.id] = d.data(); });
+                    attendanceLoaded = true;
+                    render();
+                },
+                (err) => console.error("هەڵەی خوێندنەوەی ئامادەبوون:", err)
+            );
+        }
+        subscribeAttendanceForDay(currentDay);
+        document.getElementById('active-day-label').innerText = currentDay;
+
+        // پشکنین هەر ٦٠ چرکە جارێک، ئەگەر ڕۆژ گۆڕا panel خۆی نوێ بکاتەوە
+        setInterval(() => {
+            const nowStr = getTodayStr();
+            if (nowStr !== currentDay) {
+                currentDay = nowStr;
+                document.getElementById('active-day-label').innerText = currentDay;
+                subscribeAttendanceForDay(currentDay);
+            }
+        }, 60000);
+
+        // ===== ڕەندەرکردن =====
+        function render() {
+            if (!studentsLoaded || !attendanceLoaded) return;
+            document.getElementById('daily-loading').style.display = 'none';
+            document.getElementById('daily-lists').style.display = 'flex';
+
+            const presentList = document.getElementById('present-list');
+            const absentList = document.getElementById('absent-list');
+            const allStudentsTable = document.getElementById('all-students-table-body');
+            const parentsList = document.getElementById('parents-status-list');
+
+            presentList.innerHTML = ''; absentList.innerHTML = '';
+            allStudentsTable.innerHTML = ''; parentsList.innerHTML = '';
+
+            let pCount = 0, aCount = 0;
+
+            studentsCache.forEach(student => {
+                const statusObj = attendanceCache[student.cardId] || { status: 'absent' };
+                const status = statusObj.status;
+
+                let itemClass = '';
+                if (status === 'forgot-card') itemClass = 'status-blue';
+                if (status === 'leave') itemClass = 'status-leave';
+
+                const li = document.createElement('li');
+                li.className = itemClass;
+
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = `${student.name} (${student.class})`;
+                li.appendChild(nameSpan);
+
+                const actions = document.createElement('div');
+                actions.innerHTML = `
+                    <button data-card="${cssEscape(student.cardId)}" data-status="present">هاتوو</button>
+                    <button data-card="${cssEscape(student.cardId)}" data-status="absent">نەهاتوو</button>
+                    <button data-card="${cssEscape(student.cardId)}" data-status="leave">مۆڵەت</button>
+                    <button data-card="${cssEscape(student.cardId)}" data-status="forgot-card">بیرچوون</button>`;
+                li.appendChild(actions);
+
+                if (status === 'present' || status === 'forgot-card') { presentList.appendChild(li); pCount++; }
+                else { absentList.appendChild(li); aCount++; }
+
+                // خشتەی گشتی
+                const row = document.createElement('tr');
+                const tdCard = document.createElement('td'); tdCard.textContent = student.cardId;
+                const tdName = document.createElement('td'); tdName.textContent = student.name;
+                const tdClass = document.createElement('td'); tdClass.textContent = student.class;
+
+                const tdLink = document.createElement('td');
+                if (student.linkCode) {
+                    const linkBtn = document.createElement('button');
+                    linkBtn.className = 'btn-link';
+                    linkBtn.textContent = '📋 کۆپی کۆد';
+                    linkBtn.title = student.linkCode;
+                    linkBtn.addEventListener('click', () => {
+                        navigator.clipboard.writeText(student.linkCode);
+                        linkBtn.textContent = '✔ کۆپی کرا';
+                        setTimeout(() => linkBtn.textContent = '📋 کۆپی کۆد', 1500);
+                    });
+                    tdLink.appendChild(linkBtn);
+                } else {
+                    tdLink.textContent = '---';
+                }
+
+                const tdActions = document.createElement('td');
+                tdActions.innerHTML = `
+                    <button class="btn-edit" data-card="${cssEscape(student.cardId)}" data-action="edit">دەستکاری</button>
+                    <button class="btn-pdf" data-card="${cssEscape(student.cardId)}" data-action="pdf">PDF</button>
+                    ${isAdmin ? `<button class="btn-delete" data-card="${cssEscape(student.cardId)}" data-action="delete">سڕینەوە</button>` : ''}`;
+                row.appendChild(tdCard); row.appendChild(tdName); row.appendChild(tdClass);
+                row.appendChild(tdLink); row.appendChild(tdActions);
+                allStudentsTable.appendChild(row);
+
+                // بەخێوکەران
+                const pLi = document.createElement('li');
+                const pSpan = document.createElement('span');
+                pSpan.textContent = `${student.name} (بەخێوکەر): ${student.parentJoined ? '🟢 جۆین بووە' : '🔴 جۆین نەبووە'}`;
+                pLi.appendChild(pSpan);
+                const toggleBtn = document.createElement('button');
+                toggleBtn.className = 'btn-toggle-parent';
+                toggleBtn.textContent = 'گۆڕینی دۆخ';
+                toggleBtn.dataset.card = student.cardId;
+                toggleBtn.dataset.action = 'toggle-parent';
+                pLi.appendChild(toggleBtn);
+                parentsList.appendChild(pLi);
+            });
+
+            document.getElementById('today-present-count').innerText = pCount;
+            document.getElementById('today-absent-count').innerText = aCount;
+
+            // ڕیفرێشی گەڕان (بۆ ئەوەی فلتەری چالاک بمێنێتەوە)
+            document.getElementById('student-search').dispatchEvent(new Event('input'));
+        }
+
+        function cssEscape(str) { return String(str).replace(/"/g, '&quot;'); }
+
+        // ===== event delegation: دوگمەکانی گۆڕینی دۆخی ئامادەبوون =====
+        document.getElementById('present-list').addEventListener('click', handleStatusClick);
+        document.getElementById('absent-list').addEventListener('click', handleStatusClick);
+
+        function handleStatusClick(e) {
+            const btn = e.target.closest('button[data-status]');
+            if (!btn) return;
+            changeStatus(btn.dataset.card, btn.dataset.status);
+        }
+
+        async function changeStatus(cardId, newStatus) {
+            try {
+                await setDoc(
+                    doc(collection(doc(db, "attendance", currentDay), "records"), cardId),
+                    { status: newStatus, time: new Date().toISOString(), changedBy: staff.name },
+                    { merge: true }
+                );
+            } catch (err) {
+                alert("هەڵە لە نوێکردنەوەی دۆخ: " + err);
+            }
+        }
+
+        // ===== event delegation: دوگمەکانی خشتەی قوتابییان =====
+        document.getElementById('all-students-table-body').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const cardId = btn.dataset.card;
+            const action = btn.dataset.action;
+            const student = studentsCache.find(s => s.cardId === cardId);
+            if (!student) return;
+
+            if (action === 'edit') loadStudentForEdit(student);
+            if (action === 'pdf') exportStudentPDF(student);
+            if (action === 'delete') deleteStudent(student);
+        });
+
+        document.getElementById('parents-status-list').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-action="toggle-parent"]');
+            if (!btn) return;
+            toggleParentJoined(btn.dataset.card);
+        });
+
+        async function toggleParentJoined(cardId) {
+            const student = studentsCache.find(s => s.cardId === cardId);
+            if (!student) return;
+            try {
+                await setDoc(doc(db, "students", cardId), { parentJoined: !student.parentJoined }, { merge: true });
+            } catch (err) {
+                alert("هەڵە: " + err);
+            }
+        }
+
+        function exportStudentPDF(student) {
+            const element = document.createElement('div');
+            element.style.direction = 'rtl';
+            element.style.fontFamily = 'Tahoma, sans-serif';
+
+            const h1 = document.createElement('h1'); h1.textContent = `ڕاپۆرتی قوتابی: ${student.name}`;
+            const pClass = document.createElement('p'); pClass.textContent = `پۆل: ${student.class}`;
+            const pCard = document.createElement('p'); pCard.textContent = `ژمارەی کارت: ${student.cardId}`;
+
+            element.appendChild(h1);
+            element.appendChild(pClass);
+            element.appendChild(pCard);
+
+            html2pdf().from(element).save(`${student.name}_ڕاپۆرت.pdf`);
+        }
+
+        async function deleteStudent(student) {
+            if (!isAdmin) {
+                alert('تەنها بەڕێوەبەر دەتوانێت قوتابی بسڕێتەوە.');
+                return;
+            }
+            const ok = confirm(`دڵنیای لە سڕینەوەی "${student.name}"؟ ئەم کردارە ناگەڕێتەوە.`);
+            if (!ok) return;
+            try {
+                await deleteDoc(doc(db, "students", student.cardId));
+                if (student.imageUrl) {
+                    try {
+                        await deleteObject(ref(storage, `students/${student.cardId}.jpg`));
+                    } catch (e) { /* لەوانەیە وێنە نەبووبێت، گرنگ نییە */ }
+                }
+                alert("قوتابیەکە سڕایەوە.");
+            } catch (err) {
+                alert("هەڵە لە سڕینەوە: " + err);
+            }
+        }
+
+        // ===== ڕاپۆرتی مانگانەی غایبات (بە داواکاری، نەک زیندوو) =====
+        async function loadMonthlyReport() {
+            const tbody = document.getElementById('monthly-report-table-body');
+            const loadingEl = document.getElementById('monthly-loading');
+            tbody.innerHTML = '';
+            loadingEl.style.display = 'block';
+
+            try {
+                const yearMonth = currentDay.slice(0, 7); // "YYYY-MM"
+
+                // هەموو تۆمارەکانی ئامادەبوون لە هەموو ڕۆژەکان دەهێنین (collectionGroup)
+                const snap = await getDocs(collectionGroup(db, 'records'));
+
+                // بۆ هەر ڕۆژ، کۆمەڵەی cardId ی ئەوانەی تۆماریان هەیە
+                const dayRecords = {}; // { 'YYYY-MM-DD': { cardId: status } }
+                snap.forEach(docSnap => {
+                    const dayId = docSnap.ref.parent.parent.id; // ناوی ڕۆژ لە path
+                    if (!dayId || !dayId.startsWith(yearMonth)) return;
+                    if (!dayRecords[dayId]) dayRecords[dayId] = {};
+                    dayRecords[dayId][docSnap.id] = docSnap.data().status;
+                });
+
+                const schoolDays = Object.keys(dayRecords); // ڕۆژانێک کە دەوامیان تێدا چالاک بووە
+
+                // ژمێردنی غایبات بۆ هەر قوتابی
+                const absenceCounts = {}; // cardId -> ژمارە
+                studentsCache.forEach(s => { absenceCounts[s.cardId] = 0; });
+
+                schoolDays.forEach(day => {
+                    const records = dayRecords[day];
+                    studentsCache.forEach(s => {
+                        const status = records[s.cardId]; // undefined ئەگەر تۆمار نەکرابێت
+                        const isAbsent = !status || status === 'absent';
+                        if (isAbsent) absenceCounts[s.cardId] = (absenceCounts[s.cardId] || 0) + 1;
+                    });
+                });
+
+                loadingEl.style.display = 'none';
+
+                studentsCache
+                    .filter(s => absenceCounts[s.cardId] > 0)
+                    .sort((a, b) => absenceCounts[b.cardId] - absenceCounts[a.cardId])
+                    .forEach(s => {
+                        const count = absenceCounts[s.cardId];
+                        let colorClass = '';
+                        if (count >= 6) colorClass = 'status-red';
+                        else if (count >= 4) colorClass = 'status-orange';
+
+                        const row = document.createElement('tr');
+                        row.className = colorClass;
+                        const tdName = document.createElement('td'); tdName.textContent = s.name;
+                        const tdClass = document.createElement('td'); tdClass.textContent = s.class;
+                        const tdCount = document.createElement('td'); tdCount.textContent = `${count} ڕۆژ`;
+                        row.appendChild(tdName); row.appendChild(tdClass); row.appendChild(tdCount);
+                        tbody.appendChild(row);
+                    });
+
+                if (schoolDays.length === 0) {
+                    const row = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 3;
+                    td.textContent = 'هیچ ڕۆژێکی دەوام بۆ ئەم مانگە تۆمار نەکراوە';
+                    row.appendChild(td);
+                    tbody.appendChild(row);
+                }
+            } catch (err) {
+                loadingEl.style.display = 'none';
+                console.error(err);
+                alert("هەڵە لە هێنانی ڕاپۆرتی مانگانە: " + err);
+            }
+        }
+    </script>
+</body>
+</html>
